@@ -32,7 +32,7 @@ Then, if you want to use the web based console, download the folder "static" wit
 You can also place the files else where, but you have to make sure to provide the new path with the flag *--webconDir path/to/webconFiles/*.  
   
 You will now have to setup the Minecraft server. You can place the executable anywhere, just make sure to set the path/to/serverFiles/ with the flag *--ServerDir /path/to/server*.  
-If you're placing the execuable in the same directory as spigot.jar, use *--serverDir .*.  
+If you're placing the execuable in the same directory as spigot.jar, use *--serverDir .*  
 By default, the startup script is **java -Xmx1G -jar spigot.jar** but you can change it with the flag *--runCmd [startup script]*.
 
 # All the flags

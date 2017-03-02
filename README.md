@@ -13,7 +13,9 @@ It also has an authentication system where the username and password can easily 
 # Screenshots
 Here is how it looks like: 
   - http://prntscr.com/ef33y0 - webcon login, invalid username/password.
-  - http://prntscr.com/ef346k - how webcon and the main console looks like.
+  - http://prntscr.com/ef4681 - how webcon and the main console looks like.
+  - http://prntscr.com/ef476x - trying out custom GoMinewarp commands.
+  - http://prntscr.com/ef47pv - restarting the server (with the fancy filters turned off **:(**)
   - http://prntscr.com/ef35ys - how errors look like (done on purpose).
   - http://prntscr.com/ef38e7 - how player join/leave and chat messages look like. Including command highlighting. Very colourful :D
 

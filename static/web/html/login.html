@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Webcon - Login</title>
+    <base href="/">
+    <link rel="stylesheet" href="resources/css/semantic.min.css" />
+    <link rel="stylesheet" href="resources/css/main.css" />
+  </head>
+  <body id="login">
+    <div class="container">
+      <h1 class="ui header large" style="text-align: center;">Login</h1>
+      <form class="ui form" action="/login" method="post">
+        <div class="field">
+          <label>Username</label>
+          <input type="text" name="username">
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <input type="password" name="password">
+        </div>
+        <p style='color: #AA0000;'>{{.Status}}</p>
+        <button class="ui button" type="submit">Login</button>
+      </form>
+    </div>
+  </body>
+</html>

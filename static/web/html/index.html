@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Webcon - {{.Username}}</title>
+    <base href="/">
+    <script type="text/javascript" src="resources/js/jquery-3.1.1.min.js"></script>
+    <link rel="stylesheet" href="resources/css/semantic.min.css" />
+    <link rel="stylesheet" href="resources/css/main.css" />
+    <script type="text/javascript">
+    //<![CDATA[
+    $(document).ready(function() {
+        var token = "{{.Token}}"
+        var ws;
+        var togglecmdi = 1;
+
+        if (window.WebSocket === undefined) {
+            $("#console").append("Your browser does not support WebSockets");
+        } else { ws = initWS(); }
+
+        function initWS() {
+            var socket = new WebSocket("ws://" + location.host + "/ws"),
+                container = $("#console")
+            socket.onopen = function() {
+                container.append("<p>Socket is open</p>");
+                ws.send(JSON.stringify({"token": token, "command": "/ws-gh"}));
+            }
+            socket.onmessage = function (e) {
+                var obj = JSON.parse(e.data)
+                container.append(obj);
+                sd()
+            }
+            socket.onclose = function () {
+                container.append("<p>Socket closed</p>");
+            }
+            return socket;
+        }
+
+        function sd() {
+            $('html, body').animate({ scrollTop: $('#sd').offset().top }, .1);
+        }
+
+        $(document).on('keydown', function(e) {
+         	  var key = e.keyCode || e.charCode;
+             if(key == 13) {
+             	  // ENTER
+             		var cmd = $("#cmd-input").val();
+             		cmdtype = $(".cmd-type").html();
+             		cmdtype = cmdtype.replace("/", "");
+             		cmd = cmdtype + cmd;
+                ws.send(JSON.stringify({"token": token, "command": cmd}));
+             			  $(".cmd-input").addClass("hidden");
+             			  $("#cmd-input").val("");
+             			  $(".cmd-type").html("");
+             			  togglecmdi = 1;
+             } else if(key == 27) {
+             		// ESC
+             		$(".cmd-input").addClass("hidden");
+             	  $("#cmd-input").val("");
+             		$(".cmd-type").html("");
+             		togglecmdi = 1;
+         	  } else if(key == 8) {
+             		// BACKSPACE
+             		if (document.getElementById('cmd-input').value.length == 0) {
+             			   $(".cmd-input").addClass("hidden");
+             			   $("#cmd-input").val("");
+             			   $(".cmd-type").html("");
+             		     togglecmdi = 1;
+             		 }
+         	  } else {
+         	      $(".cmd-input").removeClass("hidden");
+         		    $("#cmd-input").focus();
+             	  if(key == 191) {
+               	    //  /<command>
+               		  if (togglecmdi == 1) {
+                        e.preventDefault();
+               		      $(".cmd-type").html("/");
+               				  togglecmdi = 0;
+               				  return false;
+               	    }
+               	} else if (togglecmdi == 1) {
+               	    //  /say <message>
+               		  $(".cmd-type").html("/say ");
+               	}
+               	togglecmdi = 0;
+         	  }
+         });
+    });
+    //]]>
+    </script>
+  </head>
+  <body>
+    <div class="update" id="console"></div>
+    <div id="sd"></div>
+
+    <div id="infologs"></div>
+    <div class="cmd-input hidden">
+      <div class="cmd-wrapper">
+        <div class="cmd-type"></div>
+        <input type="text" id="cmd-input" placeholder="Enter a command... Press enter to execute." />
+    	</div>
+    </div>
+  </body>
+</html>

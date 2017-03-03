@@ -23,9 +23,9 @@ Here is how it looks like:
 
 # How to use it?  
 Firsly, you have the option to use the .go file or the executables. Currently, I've made executables for Windows and Linux which you can download here:  
-  - Windows: https://github.com/SuperPykkon/GoMinewrap/files/816632/mcs-0.1-windows.zip  
-  - Linux: https://github.com/SuperPykkon/GoMinewrap/files/816630/mcs-0.1-linux.zip  
-  - Mac: https://github.com/SuperPykkon/GoMinewrap/files/816631/mcs-0.1-mac.zip  
+  - Windows: https://github.com/SuperPykkon/GoMinewrap/files/816676/gominewarp-0.1-windows.zip  
+  - Linux: https://github.com/SuperPykkon/GoMinewrap/files/816677/gominewarp-0.1-linux.zip  
+  - Mac: https://github.com/SuperPykkon/GoMinewrap/files/816675/gominewarp-0.1-mac.zip  
   
   **NOTE**
   Please note that the executables for Linux and Mac is **not tested**. I don't have any of them and I can't get a VM either.  

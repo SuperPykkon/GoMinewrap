@@ -1,5 +1,6 @@
 # What is GoMinewrap?
 GoMinewarp is a wrapper for your Minecraft server console. It comes with many new features that could possibly make server management easier.  
+  
 GoMinewarp is also a re-creation of 2 of my very old projects;  
   - minecraft-server-web-console: https://github.com/SuperPykkon/minecraft-server-web-console  
   - minecraft-server-wrapper: https://github.com/SuperPykkon/minecraft-server-wrapper  
@@ -7,6 +8,7 @@ GoMinewarp is also a re-creation of 2 of my very old projects;
 **What does it do?**  
 It completly changes the console log format and adds icons, highlighting errors, warnings, player join/leave and much more.  
 It also comes with a fully functional real time web based console which also has icons, highlighting errors, warnings, player join/leave etc etc.  
+  
 The web based console, also known as *webcon* can be toggled on or off with a flag *--webcon  [on/off]*.  
 It also has an authentication system where the username and password can easily be set with the flags *--webconUser [user]* and *--webconPass [password]*.  
 
@@ -21,21 +23,30 @@ Here is how it looks like:
 
 # How to use it?  
 Firsly, you have the option to use the .go file or the executables. Currently, I've made executables for Windows and Linux which you can download here:  
-  - Windows: https://github.com/SuperPykkon/GoMinewrap/releases/download/v0.1/mcs-v0.1-windows.exe  
-  - Linux: https://github.com/SuperPykkon/GoMinewrap/releases/download/v0.1/mcs-v0.1-linux  
-  - Mac: https://github.com/SuperPykkon/GoMinewrap/releases/download/v0.1/mcs-v0.1-mac  
+  - Windows: https://github.com/SuperPykkon/GoMinewrap/files/816632/mcs-0.1-windows.zip  
+  - Linux: https://github.com/SuperPykkon/GoMinewrap/files/816630/mcs-0.1-linux.zip  
+  - Mac: https://github.com/SuperPykkon/GoMinewrap/files/816631/mcs-0.1-mac.zip  
   
   **NOTE**
   Please note that the executables for Linux and Mac is **not tested**. I don't have any of them and I can't get a VM either.  
   So, it is very much possible that it won't work. I recommend you to run mcs.go instead or just use Wine on the Windows executable.  
   A proper working version of these will be released soon!  
   
-Then, if you want to use the web based console, download the folder "static" with all the html files for webcon and place it in the same directory.
+# How to use it? -- Webcon
+  
+When you download the zip, it comes with the executable and static folder. This is where all the html files for webcon are.  
 You can also place the files else where, but you have to make sure to provide the new path with the flag *--webconDir path/to/webconFiles/*.  
   
-You will now have to setup the Minecraft server. You can place the executable anywhere, just make sure to set the path/to/serverFiles/ with the flag *--ServerDir /path/to/server*.  
+To use webcon, you will first have to enable it with the flag *--webcon on*. Don't forget to add a username and password for the login with the flags *--webconUser [user]* and *--webconPass [password]*. Or you can use the default username and password if you'll be using it for yourself.  
+  
+By default, webcon runs on localhost on the port 80, so http://127.0.0.1 or http://localhost should work. Or you can specify your own host and port with the flags *--webconHost [IP]* and *--webconPort [port]*.  
+  
+# How to use it? -- Minecraft server
+  
+By default, the zip comes with a folder called "server", this is where your server files will go. You can place the executable anywhere, just make sure to set the path/to/serverFiles/ with the flag *--ServerDir /path/to/server*.  
+  
 If you're placing the execuable in the same directory as spigot.jar, use *--serverDir .*  
-By default, the startup script is **java -Xmx1G -jar spigot.jar** but you can change it with the flag *--runCmd [startup script]*.
+By default, the startup script is **java -Xmx1G -jar spigot.jar**, you can change it with the flag *--runCmd [startup script]*.
 
 # All the flags
     1. --runCmd [startup script]
@@ -86,13 +97,13 @@ Then for later updates, I have a lot of HUGE ideas for GoMinewarp. For example:
   - You tell me, that's all I got :P
   
 Alright, there you go, I really hope you like GoMinewarp, I spent a lot of time developing it and not to mention this is my very first GoLang project!  
+  
 I started development of GoMinewarp just a few days after learning the basics of GoLang and tried out new packages, learned how to use it, the sytaxes and error handling,  
 All that while developing GoMinewarp ;D.  
   
-I'm sure because of that, the code might be messy or bad or they'll be a lot of bugs or broken things. But don't forget, I straight up jumped to making
-something huge right after I learned the basics. I slowly learned how to use the http server, subprocesses, regex, http templates and a lot of other amazing GoLang stuff.  
+I'm sure because of that, the code might be messy or bad or they'll be a lot of bugs or broken things. But don't forget, I straight up jumped to making something huge right after I learned the basics. I slowly learned how to use the http server, subprocesses, regex, http templates and a lot of other amazing GoLang stuff.  
 And I know there is a lot of room for improvement ;p.  
-
+  
 # Stay connected?
 Feel free to chat with me, I'm very active on the internet ;o
   - Discord: https://discord.gg/tae9mst

@@ -94,6 +94,7 @@ Then for later updates, I have a lot of HUGE ideas for GoMinewarp. For example:
   - Multi server type support - Support other server types like Vanilla, SpongePowered, and Bungeecord.
   - Multi server support - Support running multiple servers at once, switch servers using !server [server], execute a command on all the servers, and much much more!
   - In-game color support - Since the program uses stdout from the subprocess, there is no color stuff to make use of :(. But I will find a way sooner or later.
+  - Make webcon a proper web based dahsboard - Then anyone and/or everyone can have a web based dashboard for their server :D. But this really won't be easy at all.
   - You tell me, that's all I got :P
   
 Alright, there you go, I really hope you like GoMinewarp, I spent a lot of time developing it and not to mention this is my very first GoLang project!  

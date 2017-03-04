@@ -19,9 +19,9 @@ import (
     "github.com/fatih/color"
     "github.com/gorilla/websocket"
     "github.com/dgrijalva/jwt-go"
+    "github.com/spf13/viper"
 )
 
-const version = "0.1"
 const (
     clrRed = "\x1b[31;22m"
     clrDarkRed = "\x1b[31m"
@@ -82,7 +82,7 @@ type processData struct {
     StdoutPipe io.ReadCloser
 }
 
-var runCmd, serverDir, webcon, webconDir, webconHost, webconPort, webconUser, webconPass string
+var config, configDir string
 var logs map[int] string
 var users map [string] string
 var wsConns = make(map[string] wsUserdata)
@@ -93,25 +93,32 @@ func main() {
     users = make(map[string] string)
 
     flags := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
-  	flags.StringVar(&runCmd, "runCmd", "java -Xmx1G -jar spigot.jar", "Startup script for the Minecraft server.")
-    flags.StringVar(&serverDir, "serverDir", "server", "Directory of the server.")
-  	flags.StringVar(&webcon, "webcon", "off", "Enable or disable webcon (web console).")
-    flags.StringVar(&webconDir, "webconDir", "static/web/html/", "Directory of the webcon files.")
-    flags.StringVar(&webconHost, "webconHost", "", "Enable or disable webcon (web console).")
-    flags.StringVar(&webconPort, "webconPort", "80", "Which port will webcon listen on?")
-    flags.StringVar(&webconUser, "webconUser", "admin", "Username for webcon login.")
-    flags.StringVar(&webconPass, "webconPass", "changeme", "Password for webcon login.")
+  	flags.StringVar(&config, "config", "config", "Name of config file (without extension)")
+    flags.StringVar(&configDir, "configDir", "GoMinewrap/", "Path to look for the config file in")
   	flags.Parse(os.Args[1:])
 
-    users[webconUser] = webconPass
+    viper.SetConfigName(config)
+    viper.AddConfigPath(configDir)
+    viper.AutomaticEnv()
 
-    fmt.Println("/*\n *    GoMinewrap v" + version + " by SuperPykkon.\n */")
+    if err := viper.ReadInConfig(); err != nil {
+			  fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "VIPER" + clrWhite + ")" + clrDarkCyan + ": " + clrRed + "Error: missing config file or invalid path." + clrEnd)
+        os.Exit(1)
+		}
 
-    if webcon == "on" { go webconHandler() }
+    fmt.Println("/*\n *    GoMinewrap v" + viper.GetString("version") + " by SuperPykkon.\n */")
+
+    if viper.GetBool("webcon.enabled") {
+        for _, u := range viper.Get("webcon.users").([]interface{}) {
+            users[strings.Split(u.(string), ":")[0]] = strings.Split(u.(string), ":")[1]
+        }
+        go webconHandler()
+    }
+    enableFilters = viper.GetBool("server.filters.enabled")
 
     c := make(chan os.Signal, 1)
     signal.Notify(c, os.Interrupt)
-    go func(){
+    go func() {
         for sig := range c {
             fmt.Println(sig)
             io.WriteString(servers["main"].StdinPipe, "stop\n")
@@ -130,9 +137,9 @@ func main() {
 
 
 func run() {
-    fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "SERVER" + clrWhite + ")" + clrDarkCyan + ": " + clrEnd + "Starting the server...")
-    process := exec.Command(strings.Fields(runCmd)[0], strings.Fields(runCmd)[1:]...)
-    process.Dir = serverDir
+    fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "SERVER" + clrWhite + ")" + clrDarkCyan + ": " + clrMagenta + "Starting the server..." + clrEnd)
+    process := exec.Command(strings.Fields(viper.GetString("server.startup"))[0], strings.Fields(viper.GetString("server.startup"))[1:]...)
+    process.Dir = viper.GetString("server.dir")
     var restart bool
 
     stdin, err := process.StdinPipe()
@@ -165,7 +172,7 @@ func run() {
                 if len(strings.TrimSpace(command)) > 1 {
                     switch strings.Fields(strings.TrimSpace(strings.TrimPrefix(command, "!")))[0] {
                         case "help":
-                            fmt.Fprintln(color.Output, clrYellow + "==================== " + clrGreen + "GoMinewrap" + clrGreen + " ====================")
+                            fmt.Fprintln(color.Output, clrYellow + "==================== " + clrGreen + "GoMinewrap" + clrYellow + " ====================")
                             fmt.Fprintln(color.Output, "     " + clrDarkMagenta + "GoMinewrap" + clrWhite + ":" + clrEnd)
                             fmt.Fprintln(color.Output, "     " + clrWhite + "- " + clrDarkYellow + "!help" + clrWhite + ":  " + clrDarkCyan + "Display this help menu." + clrEnd)
                             fmt.Fprintln(color.Output, "     " + clrWhite + "- " + clrDarkYellow + "!version" + clrWhite + ":  " + clrDarkCyan + "Display the version of GoMinewrap" + clrEnd)
@@ -176,15 +183,15 @@ func run() {
                             fmt.Fprintln(color.Output, "     " + clrWhite + "- " + clrDarkYellow + "stop" + clrWhite + ":  " + clrDarkCyan + "Properly exit the server and wrapper." + clrEnd)
 
                         case "version":
-                            fmt.Fprintln(color.Output, clrDarkCyan + "// " + clrYellow + "GoMinewrap v" + version + " by SuperPykkon." + clrEnd)
+                            fmt.Fprintln(color.Output, clrDarkCyan + "// " + clrYellow + "GoMinewrap v" + viper.GetString("version") + " by SuperPykkon." + clrEnd)
 
                         case "filters":
                             if len(strings.Fields(command)) == 2 {
                                 if strings.Fields(command)[1] == "on" {
-                                    fmt.Fprintln(color.Output, clrDarkCyan + "// " + clrYellow + "GoMinewrap > " + clrDarkCyan + "Turned on custom log filtering." + clrEnd)
+                                    fmt.Fprintln(color.Output, clrDarkCyan + "// " + clrYellow + "GoMinewrap > " + clrDarkCyan + "Turned " + clrGreen + "on" + clrDarkCyan + " custom log filtering." + clrEnd)
                                     enableFilters = true
                                 } else if strings.Fields(command)[1] == "off" {
-                                    fmt.Fprintln(color.Output, clrDarkCyan + "// " + clrYellow + "GoMinewrap > " + clrDarkCyan + "Turned off custom log filtering." + clrEnd)
+                                    fmt.Fprintln(color.Output, clrDarkCyan + "// " + clrYellow + "GoMinewrap > " + clrDarkCyan + "Turned " + clrRed + "off" + clrDarkCyan + " custom log filtering." + clrEnd)
                                     enableFilters = false
                                 } else {
                                     fmt.Fprintln(color.Output, clrDarkCyan + "// " + clrYellow + "GoMinewrap > " + clrDarkCyan + "Unknown arguement '" + strings.Fields(command)[1] + "'. !filters [on/off]" + clrEnd)
@@ -199,13 +206,13 @@ func run() {
             } else {
                 switch strings.TrimSpace(command) {
                     case "stop":
-                        fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "SERVER" + clrWhite + ")" + clrDarkCyan + ": " + clrEnd + "Received stop command, exiting the server...")
+                        fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "SERVER" + clrWhite + ")" + clrDarkCyan + ": " + clrMagenta + "Received stop command, exiting the server..." + clrEnd)
                         io.WriteString(stdin, command + "\n")
                         process.Wait()
 
                     case "restart":
-                        fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "SERVER" + clrWhite + ")" + clrDarkCyan + ": " + clrEnd + "Received restart command, restarting the server...")
-                        io.WriteString(stdin, command + "\n")
+                        fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "SERVER" + clrWhite + ")" + clrDarkCyan + ": " + clrMagenta + "Received restart command, restarting the server..." + clrEnd)
+                        io.WriteString(stdin, "stop\n")
                         process.Wait()
                         restart = true
 
@@ -344,14 +351,16 @@ func filters(text string, type_ string) string {
 func webconHandler() {
     time.Sleep(time.Millisecond * 1500)
 
-    fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ")" + clrDarkCyan + ": " + clrEnd + "Starting the web server...")
+    fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ")" + clrDarkCyan + ": " + clrMagenta + "Starting the web server on: " + viper.GetString("webcon.host") + ":" + viper.GetString("webcon.port") + " ..." + clrEnd)
+    fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ")" + clrDarkCyan + ": " + clrGreen + "Loaded " + clrDarkCyan + strconv.Itoa(len(viper.Get("webcon.users").([]interface{}))) + clrGreen + " users for webcon login." + clrEnd)
+
     http.Handle("/", webconAuthValidate(webconRootHandler))
     http.HandleFunc("/ws", wsHandler)
     http.HandleFunc("/login", webconAuthLogin)
     http.HandleFunc("/logout", webconAuthValidate(webconAuthLogout))
     http.Handle("/resources/", http.StripPrefix("/resources/", http.FileServer(http.Dir("static/web/html/resources"))))
 
-    http.ListenAndServe(webconHost + ":" + webconPort, nil)
+    http.ListenAndServe(viper.GetString("webcon.host") + ":" + viper.GetString("webcon.port"), nil)
 }
 
 func webconRootHandler(w http.ResponseWriter, r *http.Request)  {
@@ -359,31 +368,61 @@ func webconRootHandler(w http.ResponseWriter, r *http.Request)  {
     if !ok {
         http.Redirect(w, r, "/login", 307)
     }
-    if _, err := os.Stat(webconDir + "index.html"); os.IsNotExist(err) {
+    if _, err := os.Stat(viper.GetString("webcon.dir") + "index.html"); os.IsNotExist(err) {
         fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ")" + clrDarkCyan + ": " + clrRed + "Error: missing file 'index.html' or invalid path." + clrEnd)
         fmt.Fprintln(w, "An internal error has occured.")
     } else {
-        t := template.Must(template.ParseFiles(webconDir + "index.html"))
-        cookie, _ := r.Cookie("Auth")
-        temp := consoleTemplate{Username: claims.Username, Token: cookie.Value}
-        t.Execute(w, temp)
+        var blocked bool = false
+        for _, a := range viper.Get("webcon.blacklist.IP").([]interface{}) {
+            if strings.Split(r.RemoteAddr, ":")[0] == a.(string) {
+                fmt.Fprintln(w, "You do not have permission to access this page.")
+                fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ")" + clrDarkCyan + ": " + clrRed + "Terminated connection from blacklisted IP: " + clrYellow + a.(string) + clrEnd)
+                blocked = true
+            }
+        }
+
+        for _, a := range viper.Get("webcon.blacklist.users").([]interface{}) {
+            if claims.Username == a.(string) {
+                fmt.Fprintln(w, "You do not have permission to access this page.")
+                fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ")" + clrDarkCyan + ": " + clrRed + "Terminated connection from blacklisted user: " + clrYellow + a.(string) + clrEnd)
+                blocked = true
+            }
+        }
+
+        if !blocked {
+            t := template.Must(template.ParseFiles(viper.GetString("webcon.dir") + "index.html"))
+            cookie, _ := r.Cookie("Auth")
+            temp := consoleTemplate{Username: claims.Username, Token: cookie.Value}
+            t.Execute(w, temp)
+        }
     }
 }
 
 func webconAuthLogin(w http.ResponseWriter, r *http.Request) {
     if r.Method == "GET" {
-        if _, err := os.Stat(webconDir + "login.html"); os.IsNotExist(err) {
+        if _, err := os.Stat(viper.GetString("webcon.dir") + "login.html"); os.IsNotExist(err) {
             fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ")" + clrDarkCyan + ": " + clrRed + "Error: missing file 'login.html' or invalid path." + clrEnd)
             fmt.Fprintln(w, "An internal error has occured.")
         } else {
-            t := template.Must(template.ParseFiles(webconDir + "login.html"))
-            temp := consoleLogin{Status: ""}
-            t.Execute(w, temp)
+            var blocked bool = false
+            for _, a := range viper.Get("webcon.blacklist.IP").([]interface{}) {
+                if strings.Split(r.RemoteAddr, ":")[0] == a.(string) {
+                    fmt.Fprintln(w, "You do not have permission to access this page.")
+                    fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ")" + clrDarkCyan + ": " + clrRed + "Terminated connection from blacklisted IP: " + clrYellow + a.(string) + clrEnd)
+                    blocked = true
+                }
+            }
+
+            if !blocked {
+                t := template.Must(template.ParseFiles(viper.GetString("webcon.dir") + "login.html"))
+                temp := consoleLogin{Status: ""}
+                t.Execute(w, temp)
+            }
         }
     } else {
         r.ParseForm()
         if users[r.Form["username"][0]] != "" && users[r.Form["username"][0]] == r.Form["password"][0] {
-            fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ")" + clrDarkCyan + ": " + clrGreen + "Authentication successful from: " + strings.Split(r.RemoteAddr, ":")[0] + "\n                           user: " + clrDarkCyan + r.Form["username"][0] + clrEnd)
+            fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ")" + clrDarkCyan + ": " + clrGreen + "Authentication successful from: " + clrYellow + strings.Split(r.RemoteAddr, ":")[0] + clrGreen + "\n                           user: " + clrYellow + r.Form["username"][0] + clrEnd)
             // Expires the token and cookie in 1 hour
             expireToken := time.Now().Add(time.Hour * 1).Unix()
             expireCookie := time.Now().Add(time.Hour * 1)
@@ -410,12 +449,12 @@ func webconAuthLogin(w http.ResponseWriter, r *http.Request) {
             // Redirect the user to his profile
             http.Redirect(w, r, "/", 307)
         } else {
-            if _, err := os.Stat(webconDir + "login.html"); os.IsNotExist(err) {
+            if _, err := os.Stat(viper.GetString("webcon.dir") + "login.html"); os.IsNotExist(err) {
                 fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ")" + clrDarkCyan + ": " + clrRed + "Error: missing file 'login.html' or invalid path." + clrEnd)
                 fmt.Fprintln(w, "An internal error has occured.")
             } else {
-                fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ")" + clrDarkCyan + ": " + clrRed + "Authentication failed from: " + strings.Split(r.RemoteAddr, ":")[0] + "\n                           reason: Invalid username/password." + clrEnd)
-                t := template.Must(template.ParseFiles(webconDir + "login.html"))
+                fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ")" + clrDarkCyan + ": " + clrRed + "Authentication failed from: " + clrYellow + strings.Split(r.RemoteAddr, ":")[0] + clrRed + "\n                           reason: Invalid username/password." + clrEnd)
+                t := template.Must(template.ParseFiles(viper.GetString("webcon.dir") + "login.html"))
                 temp := consoleLogin{Status: "Invalid username or password."}
                 t.Execute(w, temp)
             }
@@ -486,13 +525,13 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func wsConnectionHandler(conn *websocket.Conn, IP string) {
-    fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ") " + clrMagenta + "WS" + clrDarkCyan + ": " + clrGreen + "Connection established from: " + IP + clrDarkCyan + " [" + strconv.Itoa(len(wsConns)) + "]" + clrEnd)
+    fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ") " + clrMagenta + "WS" + clrDarkCyan + ": " + clrGreen + "Connection established from: " + clrYellow + IP + clrDarkCyan + " [" + strconv.Itoa(len(wsConns)) + "]" + clrEnd)
     for {
         exec := wsExec{}
         err := conn.ReadJSON(&exec)
         if err != nil {
             delete(wsConns, IP)
-            fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ") " + clrMagenta + "WS" + clrDarkCyan + ": " + clrRed + "Connection terminated from: " + IP + clrDarkCyan + " [" + strconv.Itoa(len(wsConns)) + "]" + clrEnd)
+            fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ") " + clrMagenta + "WS" + clrDarkCyan + ": " + clrRed + "Connection terminated from: " + clrYellow + IP + clrDarkCyan + " [" + strconv.Itoa(len(wsConns)) + "]" + clrEnd)
             break
         }
         token, err := jwt.ParseWithClaims(exec.Token, &Claims{}, func(token *jwt.Token) (interface{}, error) {
@@ -508,7 +547,7 @@ func wsConnectionHandler(conn *websocket.Conn, IP string) {
                     conn.WriteJSON(filters(logs[i], "webcon"))
                 }
             } else {
-                fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ")" + clrDarkCyan + ": " + claims.Username + clrEnd + " executed a server command: " + clrCyan + "/" + exec.Command + clrEnd)
+                fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ")" + clrDarkCyan + ": " + clrYellow + claims.Username + clrEnd + " executed a server command: " + clrCyan + "/" + exec.Command + clrEnd)
                 time.Sleep(time.Millisecond)
                 io.WriteString(servers["main"].StdinPipe, exec.Command + "\n")
             }

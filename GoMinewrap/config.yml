@@ -1,0 +1,38 @@
+#
+#    GoMinewrap config file.
+#
+
+# Do not change.
+version: "0.2"
+server:
+    # Enter the path to the server's root directory.
+    dir: "server/"
+    # Startup script for the server.
+    startup: "java -Xmx1G -jar spigot.jar"
+    filters:
+        # Enable or disable the custom filters. [true/false]
+        enabled: true
+webcon:
+    # Enable or disable webcon. [true/false]
+    enabled: true
+    # Enter the path to webcon's html files.
+    dir: "static/web/html/"
+    # Which host will webcon run on.
+    host: ""
+    # Which port will webcon run on.
+    port: "80"
+    # Add as many users you want here for the webcon login.
+    # format: username:password
+    users:
+        - "SuperPykkon:Hello123"
+        - "hmksq:lollypop"
+        - "ThatOneKidEveryoneHates:TheMostAmazingPasswordEver"
+    blacklist:
+        # Blacklist any *WEBCON* users from accessing webcon.
+        # NOTE: Do not leave it blank. If you got no users to blacklist, 'users: []' is the way to go. Or else webcon will break.
+        users:
+            - "SomePerson"
+        # Blacklist any IP from accessing webcon.
+        # NOTE: Do not leave it blank. If you got no IP to blacklist, 'IP: []' is the way to go. Or else webcon will break.
+        IP:
+            - "123.45.67.890"

@@ -13,8 +13,9 @@ import (
     "net/http"
     "html/template"
     "context"
-    "os/signal"
     "flag"
+    "sync"
+    "runtime"
 
     "github.com/fatih/color"
     "github.com/gorilla/websocket"
@@ -66,6 +67,7 @@ type wsExec struct {
 type consoleTemplate struct {
     Username string
     Token string
+    Server string
 }
 
 type consoleLogin struct {
@@ -74,22 +76,33 @@ type consoleLogin struct {
 
 type wsUserdata struct {
     Conn *websocket.Conn
+    IP string
+    Port string
+    Username string
+    Server string
+}
+var wsConns = make(map[int] wsUserdata)
+
+type slogs struct {
+    Type string
+    Log string
 }
 
-type processData struct {
+type server struct {
     Process *exec.Cmd
     StdinPipe io.WriteCloser
     StdoutPipe io.ReadCloser
+    Logs map[int] slogs
+    Status string
 }
+var servers = make(map[string] server)
+var activeServer string
 
 var config, configDir string
-var logs map[int] string
 var users map [string] string
-var wsConns = make(map[string] wsUserdata)
-var servers = make(map[string] processData)
+var wg sync.WaitGroup
 
 func main() {
-    logs = make(map[int] string)
     users = make(map[string] string)
 
     flags := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
@@ -115,17 +128,17 @@ func main() {
         go webconHandler()
     }
     enableFilters = viper.GetBool("server.filters.enabled")
-
-    c := make(chan os.Signal, 1)
-    signal.Notify(c, os.Interrupt)
-    go func() {
-        for sig := range c {
-            fmt.Println(sig)
-            io.WriteString(servers["main"].StdinPipe, "stop\n")
+    for s, _ := range viper.Get("server.servers").(map[string]interface{}) {
+        if s == viper.GetString("server.primary") {
+            activeServer = s
         }
-    }()
+    }
+    if activeServer == "" {
+        fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "VIPER" + clrWhite + ")" + clrDarkCyan + ": " + clrRed + "Error: Invalid primary server '" + clrYellow + viper.GetString("server.primary") + clrRed + "'" + clrEnd)
+        os.Exit(1)
+    }
 
-    run()
+    serverRun()
 }
 
 
@@ -135,99 +148,256 @@ func main() {
 
 */
 
+func serverRun() {
+    fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "SERVER" + clrWhite + ")" + clrDarkCyan + ": " + clrMagenta + "Attempting to start " + clrYellow + strconv.Itoa(len(viper.Get("server.servers").(map[string]interface{}))) + clrMagenta + " servers..." + clrEnd)
+    fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "SERVER" + clrWhite + ")" + clrDarkCyan + ": " + clrMagenta + "The primary server is: " + clrYellow + viper.GetString("server.primary") + clrEnd)
+    go func() {
+        input := bufio.NewReader(os.Stdin)
+        for {
+            command, _ := input.ReadString('\n')
+            serverCommandHandler(command)
+        }
+    } ()
 
-func run() {
-    fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "SERVER" + clrWhite + ")" + clrDarkCyan + ": " + clrMagenta + "Starting the server..." + clrEnd)
-    process := exec.Command(strings.Fields(viper.GetString("server.startup"))[0], strings.Fields(viper.GetString("server.startup"))[1:]...)
-    process.Dir = viper.GetString("server.dir")
-    var restart bool
+    for name, _ := range viper.Get("server.servers").(map[string] interface{}) {
+        if viper.GetBool("server.servers." + name + ".enabled") {
+            fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "SERVER" + clrWhite + ")" + clrDarkCyan + ": " + clrMagenta + "Attempting to start the server: " + clrYellow + name + clrEnd)
+            process := exec.Command(strings.Fields(viper.GetString("server.servers." + name + ".startup"))[0], strings.Fields(viper.GetString("server.servers." + name + ".startup"))[1:]...)
+            process.Dir = viper.GetString("server.base") + viper.GetString("server.servers." + name + ".dir")
+            var status string
 
-    stdin, err := process.StdinPipe()
-    if err != nil { fmt.Fprintln(os.Stderr, "Error creating StdinPipe for the process:\n" + err.Error()) }
-    defer stdin.Close()
+            stdin, err := process.StdinPipe()
+            if err != nil {
+                fmt.Fprintln(os.Stderr, "Error creating StdinPipe for the process:\n" + err.Error())
+                status = "Failed #1"
+            }
+            defer stdin.Close()
 
-    stdout, err := process.StdoutPipe()
-    if err != nil { fmt.Fprintln(os.Stderr, "Error creating StdoutPipe for the process:\n" + err.Error()) }
+            stdout, err := process.StdoutPipe()
+            if err != nil {
+                fmt.Fprintln(os.Stderr, "Error creating StdoutPipe for the process:\n" + err.Error())
+                status = "Failed #2"
+            }
 
-    servers["main"] = processData{Process: process, StdinPipe: stdin, StdoutPipe: stdout}
+            status = "Running"
+            wg.Add(1)
+            go serverLogHandler(name, process, stdin, stdout, status)
+        }
+    }
+    wg.Wait()
+    fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "SERVER" + clrWhite + ")" + clrDarkCyan + ": " + clrMagenta + "All servers have been exited." + clrEnd)
+}
+
+func serverLogHandler(name string, process *exec.Cmd, stdin io.WriteCloser, stdout io.ReadCloser, status string) bool {
     output := bufio.NewScanner(stdout)
-
     go func() {
         for output.Scan() {
             if output.Text() != "" {
-                fmt.Fprintln(color.Output, filters(output.Text() + "\n", "main"))
-                for _, conn := range wsConns {
-                    conn.Conn.WriteJSON(filters(output.Text(), "webcon"))
+                if name == activeServer {
+                    fmt.Fprintln(color.Output, filters(output.Text() + "\n", "main"))
                 }
-                logs[len(logs)] = output.Text()
-            }
-        }
-    } ()
-
-    input := bufio.NewReader(os.Stdin)
-    go func() {
-        for {
-            command, _ := input.ReadString('\n')
-            if strings.HasPrefix(command, "!") {
-                if len(strings.TrimSpace(command)) > 1 {
-                    switch strings.Fields(strings.TrimSpace(strings.TrimPrefix(command, "!")))[0] {
-                        case "help":
-                            fmt.Fprintln(color.Output, clrYellow + "==================== " + clrGreen + "GoMinewrap" + clrYellow + " ====================")
-                            fmt.Fprintln(color.Output, "     " + clrDarkMagenta + "GoMinewrap" + clrWhite + ":" + clrEnd)
-                            fmt.Fprintln(color.Output, "     " + clrWhite + "- " + clrDarkYellow + "!help" + clrWhite + ":  " + clrDarkCyan + "Display this help menu." + clrEnd)
-                            fmt.Fprintln(color.Output, "     " + clrWhite + "- " + clrDarkYellow + "!version" + clrWhite + ":  " + clrDarkCyan + "Display the version of GoMinewrap" + clrEnd)
-                            fmt.Fprintln(color.Output, "     " + clrWhite + "- " + clrDarkYellow + "!filters" + clrWhite + ":  " + clrDarkCyan + "Enable/disable the custom filters" + clrEnd)
-                            fmt.Println("\n")
-                            fmt.Fprintln(color.Output, "     " + clrDarkMagenta + "Server" + clrWhite + ":" + clrEnd)
-                            fmt.Fprintln(color.Output, "     " + clrWhite + "- " + clrDarkYellow + "restart" + clrWhite + ":  " + clrDarkCyan + "Properly restart the server." + clrEnd)
-                            fmt.Fprintln(color.Output, "     " + clrWhite + "- " + clrDarkYellow + "stop" + clrWhite + ":  " + clrDarkCyan + "Properly exit the server and wrapper." + clrEnd)
-
-                        case "version":
-                            fmt.Fprintln(color.Output, clrDarkCyan + "// " + clrYellow + "GoMinewrap v" + viper.GetString("version") + " by SuperPykkon." + clrEnd)
-
-                        case "filters":
-                            if len(strings.Fields(command)) == 2 {
-                                if strings.Fields(command)[1] == "on" {
-                                    fmt.Fprintln(color.Output, clrDarkCyan + "// " + clrYellow + "GoMinewrap > " + clrDarkCyan + "Turned " + clrGreen + "on" + clrDarkCyan + " custom log filtering." + clrEnd)
-                                    enableFilters = true
-                                } else if strings.Fields(command)[1] == "off" {
-                                    fmt.Fprintln(color.Output, clrDarkCyan + "// " + clrYellow + "GoMinewrap > " + clrDarkCyan + "Turned " + clrRed + "off" + clrDarkCyan + " custom log filtering." + clrEnd)
-                                    enableFilters = false
-                                } else {
-                                    fmt.Fprintln(color.Output, clrDarkCyan + "// " + clrYellow + "GoMinewrap > " + clrDarkCyan + "Unknown arguement '" + strings.Fields(command)[1] + "'. !filters [on/off]" + clrEnd)
-                                }
-                            } else {
-                                fmt.Fprintln(color.Output, clrDarkCyan + "// " + clrYellow + "GoMinewrap > " + clrDarkCyan + "Usage: !filters [on/off]" + clrEnd)
-                            }
-                        default:
-                            fmt.Fprintln(color.Output, clrDarkCyan + "// " + clrYellow + "GoMinewrap > " + clrRed + "Unknown command, try '!help' for a list of commands." + clrEnd)
+                servers[name].Logs[len(servers[name].Logs)] = slogs{Type: "server", Log: output.Text()}
+                for _, ud := range wsConns {
+                    if ud.Server == name {
+                        ud.Conn.WriteJSON(filters(output.Text(), "webcon"))
                     }
                 }
-            } else {
-                switch strings.TrimSpace(command) {
-                    case "stop":
-                        fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "SERVER" + clrWhite + ")" + clrDarkCyan + ": " + clrMagenta + "Received stop command, exiting the server..." + clrEnd)
-                        io.WriteString(stdin, command + "\n")
-                        process.Wait()
-
-                    case "restart":
-                        fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "SERVER" + clrWhite + ")" + clrDarkCyan + ": " + clrMagenta + "Received restart command, restarting the server..." + clrEnd)
-                        io.WriteString(stdin, "stop\n")
-                        process.Wait()
-                        restart = true
-
-                    default:
-                        io.WriteString(stdin, command + "\n")
-                        process.Wait()
-                }
             }
         }
     } ()
+    status = "Running"
 
-    if err = process.Start(); err != nil { fmt.Println(err) }
-    if err = process.Wait(); err != nil { fmt.Println(err) }
+    servers[name] = server{Process: process, StdinPipe: stdin, StdoutPipe: stdout, Logs: make(map[int] slogs), Status: status}
+    svr := servers[name]
+    if err := servers[name].Process.Start(); err != nil {
+        fmt.Fprintln(os.Stderr, "Error: Failed to start the server: " + name + "\n" + err.Error())
+        status = "Failed #3"
+    }
+    if err := servers[name].Process.Wait(); err != nil {
+        fmt.Fprintln(os.Stderr, "Error: Failed to wait for the process on the server: " + name + "\n" + err.Error())
+        status = "Failed #4"
+    }
+    if status == "Running" { status = "Stopped" }
+    svr.Status = status
+    servers[name] = svr
 
-    if restart { run() }
+    wg.Done()
+    return true
+}
+
+func serverCommandHandler(command string) {
+    command = strings.TrimSpace(command)
+    if strings.HasPrefix(command, "!") {
+        if len(command) > 1 {
+            cmd:for {
+                switch strings.Fields(strings.TrimPrefix(command, "!"))[0] {
+                    case "help":
+                        fmt.Fprintln(color.Output, clrYellow + "==================== " + clrGreen + "GoMinewrap" + clrYellow + " ====================")
+                        fmt.Fprintln(color.Output, "     " + clrDarkMagenta + "GoMinewrap" + clrWhite + ":" + clrEnd)
+                        fmt.Fprintln(color.Output, "     " + clrWhite + "- " + clrDarkYellow + "!help" + clrWhite + ":  " + clrDarkCyan + "Display this help menu." + clrEnd)
+                        fmt.Fprintln(color.Output, "     " + clrWhite + "- " + clrDarkYellow + "!version" + clrWhite + ":  " + clrDarkCyan + "Display the version of GoMinewrap" + clrEnd)
+                        fmt.Fprintln(color.Output, "     " + clrWhite + "- " + clrDarkYellow + "!filters" + clrWhite + ":  " + clrDarkCyan + "Enable/disable the custom filters" + clrEnd)
+                        fmt.Fprintln(color.Output, "     " + clrWhite + "- " + clrDarkYellow + "!clear" + clrWhite + ":  " + clrDarkCyan + "Clear the terminal." + clrEnd)
+                        fmt.Fprintln(color.Output, "     " + clrWhite + "- " + clrDarkYellow + "!server" + clrWhite + ":  " + clrDarkCyan + "Manage all the servers." + clrEnd)
+                        fmt.Fprintln(color.Output, clrDarkCyan + "          Note: '*' will execute the command on every single server." + clrEnd)
+                        fmt.Fprintln(color.Output, "          " + clrWhite + "- " + clrDarkYellow + "!server [server]" + clrWhite + ":  " + clrDarkCyan + "Switch to a different server." + clrEnd)
+                        fmt.Fprintln(color.Output, "          " + clrWhite + "- " + clrDarkYellow + "!server [server or *] stop" + clrWhite + ":  " + clrDarkCyan + "Stop one or all the server(s)." + clrEnd)
+                        fmt.Fprintln(color.Output, "          " + clrWhite + "- " + clrDarkYellow + "!server [server or *] restart" + clrWhite + ":  " + clrDarkCyan + "Restart one or all the server(s)." + clrEnd)
+                        fmt.Fprintln(color.Output, "          " + clrWhite + "- " + clrDarkYellow + "!server [server or *] backup" + clrWhite + ":  " + clrDarkCyan + "Backup all the server files." + clrEnd)
+                        fmt.Fprintln(color.Output, "          " + clrWhite + "- " + clrDarkYellow + "!server [server or *] exec [command]" + clrWhite + ":  " + clrEnd)
+                        fmt.Fprintln(color.Output, clrDarkCyan + "                Execute a command on any server without having to switching." + clrEnd)
+                        break cmd
+
+                    case "version":
+                        fmt.Fprintln(color.Output, clrDarkCyan + "// " + clrYellow + "GoMinewrap v" + viper.GetString("version") + " by SuperPykkon." + clrEnd)
+                        break cmd
+
+                    case "filters":
+                        if len(strings.Fields(command)) == 2 {
+                            if strings.Fields(command)[1] == "on" {
+                                fmt.Fprintln(color.Output, clrDarkCyan + "// " + clrYellow + "GoMinewrap > " + clrDarkCyan + "Turned " + clrGreen + "on" + clrDarkCyan + " custom log filtering." + clrEnd)
+                                enableFilters = true
+                            } else if strings.Fields(command)[1] == "off" {
+                                fmt.Fprintln(color.Output, clrDarkCyan + "// " + clrYellow + "GoMinewrap > " + clrDarkCyan + "Turned " + clrRed + "off" + clrDarkCyan + " custom log filtering." + clrEnd)
+                                enableFilters = false
+                            } else {
+                                fmt.Fprintln(color.Output, clrDarkCyan + "// " + clrYellow + "GoMinewrap > " + clrDarkCyan + "Unknown arguement '" + strings.Fields(command)[1] + "'. !filters [on/off]" + clrEnd)
+                            }
+                        } else {
+                            fmt.Fprintln(color.Output, clrDarkCyan + "// " + clrYellow + "GoMinewrap > " + clrDarkCyan + "Usage: !filters [on/off]" + clrEnd)
+                        }
+                        break cmd
+
+                    case "server":
+                        if len(strings.Fields(command)) == 1 {
+                            fmt.Fprintln(color.Output, clrYellow + "Currently viewing the server '" + clrGreen + activeServer + clrYellow + "' 's console." + clrEnd)
+                            fmt.Fprintln(color.Output, clrYellow + "To switch to a different server, use " + clrMagenta + "!server [server]" + clrEnd)
+                            fmt.Fprintln(color.Output, clrYellow + "Available servers: " + clrEnd)
+                            for s, sd := range servers {
+                                if sd.Status == "Failed #1" || sd.Status == "Failed #2" || sd.Status == "Failed #3" || sd.Status == "Failed #4" || sd.Status == "Stopped" {
+                                    fmt.Fprintln(color.Output, clrWhite + " -  " + clrDarkCyan + s + "    " + clrRed + sd.Status +   clrEnd)
+                                } else if sd.Status == "Running" {
+                                    fmt.Fprintln(color.Output, clrWhite + " -  " + clrDarkCyan + s + "    " + clrGreen + sd.Status + clrEnd)
+                                }
+                            }
+                        } else if len(strings.Fields(command)) == 2 {
+                            for s, _ := range viper.Get("server.servers").(map[string]interface{}) {
+                                if s == string(strings.Fields(command)[1]) {
+                                    activeServer = strings.Fields(command)[1]
+                                    serverCommandHandler("!clear")
+                                    for i := 0; i < len(servers[activeServer].Logs); i++ {
+                                        fmt.Fprintln(color.Output, filters(servers[activeServer].Logs[i].Log + "\n", "main"))
+                                    }
+                                    break cmd
+                                }
+                            }
+                            fmt.Fprintln(color.Output, clrDarkCyan + "// " + clrYellow + "GoMinewrap > " + clrRed + "Invalid server '" + string(strings.Fields(command)[1]) + "'" + clrEnd)
+                        } else if len(strings.Fields(command)) >= 3 {
+                            if strings.Fields(command)[2] == "exec" {
+                                if len(strings.Fields(command)) > 3 {
+                                    if strings.Fields(command)[1] == "*" {
+                                        for _, sd := range servers {
+                                            io.WriteString(sd.StdinPipe, strings.Join(strings.Fields(command)[3:], " ")  + "\n")
+                                        }
+                                    } else {
+                                        for s, _ := range viper.Get("server.servers").(map[string]interface{}) {
+                                            if s == string(strings.Fields(command)[1]) {
+                                                io.WriteString(servers[string(strings.Fields(command)[1])].StdinPipe, strings.Join(strings.Fields(command)[3:], " ") + "\n")
+                                                break cmd
+                                            }
+                                        }
+                                        fmt.Fprintln(color.Output, clrDarkCyan + "// " + clrYellow + "GoMinewrap > " + clrRed + "Invalid server '" + string(strings.Fields(command)[1]) + "'" + clrEnd)
+                                    }
+                                }
+                            } else if strings.Fields(command)[2] == "stop" {
+                                serverCommandHandler("!server " + string(strings.Fields(command)[1]) + " exec stop")
+                            } else if strings.Fields(command)[2] == "restart" {
+                                if strings.Fields(command)[1] == "*" {
+
+                                } else {
+                                    fmt.Println("!server " + string(strings.Fields(command)[1]) + " exec restart")
+                                    serverCommandHandler("!server " + string(strings.Fields(command)[1]) + " exec restart")
+                                    svr := servers[string(strings.Fields(command)[1])]
+                                    svr.Status = "Restarting"
+                                    servers[string(strings.Fields(command)[1])] = svr
+                                }
+                            } else if strings.Fields(command)[2] == "backup" {
+                                t := time.Now().Format("2006-01-02_15.04.05")
+                                var d *exec.Cmd
+                                if runtime.GOOS == "windows" {
+                                    d = exec.Command("cmd", "/c", "mkdir", t)
+                                } else if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
+                                    d = exec.Command("mkdir", t)
+                                }
+                                d.Dir = viper.GetString("server.backup.dir")
+                                d.Run()
+
+                                if strings.Fields(command)[1] == "*" {
+                                    fmt.Fprintln(color.Output, clrDarkCyan + "// " + clrYellow + "GoMinewrap > " + clrGreen + "Begin backup of the server: " + clrYellow + "all servers" + clrGreen +  "." + clrEnd)
+                                    for name, _ := range viper.Get("server.servers").(map[string]interface{}) {
+                                        fmt.Fprintln(color.Output, clrDarkCyan + "// " + clrYellow + "GoMinewrap > " + clrGreen + "  ...backing up the server: " + clrYellow + name + clrGreen +  "." + clrEnd)
+                                        if runtime.GOOS == "windows" {
+                                            cmd := exec.Command("cmd", "/c", "robocopy", "../../" + viper.GetString("server.base") + viper.GetString("server.servers." + name + ".dir"), viper.GetString("server.servers." + name + ".dir"), "/MIR")
+                                            cmd.Dir = viper.GetString("server.backup.dir") + t
+                                            cmd.Run()
+                                        } else if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
+                                            cmd := exec.Command("cp", "-a", "../../" + viper.GetString("server.base") + viper.GetString("server.servers." + name + ".dir") + ".", viper.GetString("server.servers." + name + ".dir"))
+                                            cmd.Dir = viper.GetString("server.backup.dir") + t
+                                            cmd.Run()
+                                        }
+                                    }
+                                } else {
+                                    fmt.Fprintln(color.Output, clrDarkCyan + "// " + clrYellow + "GoMinewrap > " + clrGreen + "Begin backup of the server: " + clrYellow + string(strings.Fields(command)[1]) + clrGreen +  "." + clrEnd)
+                                    if runtime.GOOS == "windows" {
+                                        cmd := exec.Command("cmd", "/c", "robocopy", "../../" + viper.GetString("server.base") + viper.GetString("server.servers." + string(strings.Fields(command)[1]) + ".dir"), viper.GetString("server.servers." + string(strings.Fields(command)[1]) + ".dir"), "/MIR")
+                                        cmd.Dir = viper.GetString("server.backup.dir") + t
+                                        cmd.Run()
+                                    } else if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
+                                        cmd := exec.Command("cp", "-a", "../../" + viper.GetString("server.base") + viper.GetString("server.servers." + string(strings.Fields(command)[1]) + ".dir") + ".", viper.GetString("server.servers." + string(strings.Fields(command)[1]) + ".dir"))
+                                        cmd.Dir = viper.GetString("server.backup.dir") + t
+                                        cmd.Run()
+                                    }
+                                }
+                                fmt.Fprintln(color.Output, clrDarkCyan + "// " + clrYellow + "GoMinewrap > " + clrGreen + "Backup complete: " + clrYellow + viper.GetString("server.backup.dir") + t + "..." + clrEnd)
+                            }
+                        }
+                        break cmd
+
+                    case "clear":
+                        if runtime.GOOS == "windows" {
+                            cmd := exec.Command("cmd", "/c", "cls")
+                            cmd.Stdout = os.Stdout
+                            cmd.Run()
+                        } else if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
+                            cmd := exec.Command("clear")
+                            cmd.Stdout = os.Stdout
+                            cmd.Run()
+                        }
+                        break cmd
+
+                    default:
+                        fmt.Fprintln(color.Output, clrDarkCyan + "// " + clrYellow + "GoMinewrap > " + clrRed + "Unknown command, try '!help' for a list of commands." + clrEnd)
+                        break cmd
+                }
+            }
+        }
+    } else {
+        switch strings.TrimSpace(command) {
+            case "stop":
+                fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "SERVER" + clrWhite + ")" + clrDarkCyan + ": " + clrMagenta + "Received stop command, exiting the server..." + clrEnd)
+                io.WriteString(servers[activeServer].StdinPipe, command + "\n")
+                servers[activeServer].Process.Wait()
+
+            case "restart":
+                fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "SERVER" + clrWhite + ")" + clrDarkCyan + ": " + clrMagenta + "Received restart command, restarting the server..." + clrEnd)
+                io.WriteString(servers[activeServer].StdinPipe, "stop\n")
+                servers[activeServer].Process.Wait()
+
+            default:
+                io.WriteString(servers[activeServer].StdinPipe, command + "\n")
+                servers[activeServer].Process.Wait()
+        }
+    }
 }
 
 func filters(text string, type_ string) string {
@@ -368,11 +538,13 @@ func webconRootHandler(w http.ResponseWriter, r *http.Request)  {
     if !ok {
         http.Redirect(w, r, "/login", 307)
     }
+
     if _, err := os.Stat(viper.GetString("webcon.dir") + "index.html"); os.IsNotExist(err) {
         fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ")" + clrDarkCyan + ": " + clrRed + "Error: missing file 'index.html' or invalid path." + clrEnd)
         fmt.Fprintln(w, "An internal error has occured.")
     } else {
-        var blocked bool = false
+        var blocked bool
+        var server bool = false
         for _, a := range viper.Get("webcon.blacklist.IP").([]interface{}) {
             if strings.Split(r.RemoteAddr, ":")[0] == a.(string) {
                 fmt.Fprintln(w, "You do not have permission to access this page.")
@@ -389,11 +561,27 @@ func webconRootHandler(w http.ResponseWriter, r *http.Request)  {
             }
         }
 
+        for s, _ := range viper.Get("server.servers").(map[string]interface{}) {
+            if s == strings.Join(r.URL.Query()["server"], " ") {
+               server = true
+            }
+        }
+
         if !blocked {
-            t := template.Must(template.ParseFiles(viper.GetString("webcon.dir") + "index.html"))
-            cookie, _ := r.Cookie("Auth")
-            temp := consoleTemplate{Username: claims.Username, Token: cookie.Value}
-            t.Execute(w, temp)
+            if server {
+                cookie, _ := r.Cookie("Auth")
+                var temp consoleTemplate
+                if len(r.URL.Query()["server"]) > 0 {
+                    temp = consoleTemplate{Username: claims.Username, Token: cookie.Value, Server: strings.Join(r.URL.Query()["server"], " ")}
+                } else {
+                    temp = consoleTemplate{Username: claims.Username, Token: cookie.Value, Server: viper.GetString("server.primary")}
+                }
+
+                t := template.Must(template.ParseFiles(viper.GetString("webcon.dir") + "index.html"))
+                t.Execute(w, temp)
+            } else {
+                fmt.Fprintln(w, "Invalid server entered.")
+            }
         }
     }
 }
@@ -422,7 +610,7 @@ func webconAuthLogin(w http.ResponseWriter, r *http.Request) {
     } else {
         r.ParseForm()
         if users[r.Form["username"][0]] != "" && users[r.Form["username"][0]] == r.Form["password"][0] {
-            fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ")" + clrDarkCyan + ": " + clrGreen + "Authentication successful from: " + clrYellow + strings.Split(r.RemoteAddr, ":")[0] + clrGreen + "\n                           user: " + clrYellow + r.Form["username"][0] + clrEnd)
+            if viper.GetBool("webcon.messages.login_success") { fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ")" + clrDarkCyan + ": " + clrGreen + "Authentication successful from: " + clrYellow + strings.Split(r.RemoteAddr, ":")[0] + clrGreen + "\n                           user: " + clrYellow + r.Form["username"][0] + clrEnd) }
             // Expires the token and cookie in 1 hour
             expireToken := time.Now().Add(time.Hour * 1).Unix()
             expireCookie := time.Now().Add(time.Hour * 1)
@@ -453,7 +641,7 @@ func webconAuthLogin(w http.ResponseWriter, r *http.Request) {
                 fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ")" + clrDarkCyan + ": " + clrRed + "Error: missing file 'login.html' or invalid path." + clrEnd)
                 fmt.Fprintln(w, "An internal error has occured.")
             } else {
-                fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ")" + clrDarkCyan + ": " + clrRed + "Authentication failed from: " + clrYellow + strings.Split(r.RemoteAddr, ":")[0] + clrRed + "\n                           reason: Invalid username/password." + clrEnd)
+                if viper.GetBool("webcon.messages.login_fail") { fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ")" + clrDarkCyan + ": " + clrRed + "Authentication failed from: " + clrYellow + strings.Split(r.RemoteAddr, ":")[0] + clrRed + "\n                           reason: Invalid username/password." + clrEnd) }
                 t := template.Must(template.ParseFiles(viper.GetString("webcon.dir") + "login.html"))
                 temp := consoleLogin{Status: "Invalid username or password."}
                 t.Execute(w, temp)
@@ -517,21 +705,30 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
     		return
   	}
   	conn, err := websocket.Upgrade(w, r, w.Header(), 1024, 1024)
-  	if err != nil {
-    		http.Error(w, "Could not open websocket connection", http.StatusBadRequest)
-  	}
-    wsConns[strings.Split(r.RemoteAddr, ":")[0]] = wsUserdata{Conn: conn}
-  	go wsConnectionHandler(conn, strings.Split(r.RemoteAddr, ":")[0])
+  	if err != nil { http.Error(w, "Could not open websocket connection", http.StatusBadRequest) }
+
+    token, err := jwt.ParseWithClaims(strings.Join(r.URL.Query()["token"], " "), &Claims{}, func(token *jwt.Token) (interface{}, error) {
+        // Make sure token's signature wasn't changed
+        if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+            return nil, fmt.Errorf("Unexpected siging method")
+        }
+        return []byte("secret"), nil
+    })
+    if claims, ok := token.Claims.(*Claims); ok && token.Valid {
+        CID := len(wsConns)
+        wsConns[CID] = wsUserdata{Conn: conn, IP: strings.Split(r.RemoteAddr, ":")[0], Port: strings.Split(r.RemoteAddr, ":")[1], Username: claims.Username, Server: strings.Join(r.URL.Query()["server"], " ")}
+      	go wsConnectionHandler(conn, strings.Split(r.RemoteAddr, ":")[0], CID, strings.Join(r.URL.Query()["server"], " "))
+    }
 }
 
-func wsConnectionHandler(conn *websocket.Conn, IP string) {
-    fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ") " + clrMagenta + "WS" + clrDarkCyan + ": " + clrGreen + "Connection established from: " + clrYellow + IP + clrDarkCyan + " [" + strconv.Itoa(len(wsConns)) + "]" + clrEnd)
+func wsConnectionHandler(conn *websocket.Conn, IP string, CID int, server string) {
+    if viper.GetBool("webcon.messages.ws_connect") { fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ") " + clrMagenta + "WS" + clrDarkCyan + ": " + clrGreen + "Connection established from: " + clrYellow + IP + clrDarkCyan + " [" + strconv.Itoa(len(wsConns)) + "]" + clrEnd) }
     for {
         exec := wsExec{}
         err := conn.ReadJSON(&exec)
         if err != nil {
-            delete(wsConns, IP)
-            fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ") " + clrMagenta + "WS" + clrDarkCyan + ": " + clrRed + "Connection terminated from: " + clrYellow + IP + clrDarkCyan + " [" + strconv.Itoa(len(wsConns)) + "]" + clrEnd)
+            delete(wsConns, CID)
+            if viper.GetBool("webcon.messages.ws_disconnect") { fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ") " + clrMagenta + "WS" + clrDarkCyan + ": " + clrRed + "Connection terminated from: " + clrYellow + IP + clrDarkCyan + " [" + strconv.Itoa(len(wsConns)) + "]" + clrEnd) }
             break
         }
         token, err := jwt.ParseWithClaims(exec.Token, &Claims{}, func(token *jwt.Token) (interface{}, error) {
@@ -543,13 +740,19 @@ func wsConnectionHandler(conn *websocket.Conn, IP string) {
         })
         if claims, ok := token.Claims.(*Claims); ok && token.Valid {
             if exec.Command == "/ws-gh" {
-                for i := 0; i <= len(logs); i++ {
-                    conn.WriteJSON(filters(logs[i], "webcon"))
+                for i := 0; i <= len(servers[server].Logs); i++ {
+                    if servers[server].Logs[i].Type == "server" {
+                        conn.WriteJSON(filters(servers[server].Logs[i].Log, "webcon"))
+                    }
                 }
             } else {
-                fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ")" + clrDarkCyan + ": " + clrYellow + claims.Username + clrEnd + " executed a server command: " + clrCyan + "/" + exec.Command + clrEnd)
+                if server == activeServer {
+                    if viper.GetBool("webcon.messages.exec_command") { fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ")" + clrDarkCyan + ": " + clrYellow + claims.Username + clrEnd + " executed a server command: " + clrCyan + "/" + exec.Command + clrEnd) }
+                }
+                if viper.GetBool("webcon.messages.exec_command") { servers[server].Logs[len(servers[server].Logs)] = slogs{Type: "webcon", Log: time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ")" + clrDarkCyan + ": " + clrYellow + claims.Username + clrEnd + " executed a server command: " + clrCyan + "/" + exec.Command + clrEnd} }
+
                 time.Sleep(time.Millisecond)
-                io.WriteString(servers["main"].StdinPipe, exec.Command + "\n")
+                io.WriteString(servers[server].StdinPipe, exec.Command + "\n")
             }
         }
     }

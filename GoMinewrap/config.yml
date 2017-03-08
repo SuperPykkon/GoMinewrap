@@ -3,15 +3,38 @@
 #
 
 # Do not change.
-version: "0.2"
+version: "0.3"
 server:
-    # Enter the path to the server's root directory.
-    dir: "server/"
-    # Startup script for the server.
-    startup: "java -Xmx1G -jar spigot.jar"
+    # Enter the path to the folder with all your servers
+    base: "servers/"
+    # Enter the primary/main server here. CaSe SeNsItIvE
+    primary: "hub"
+    # Add all your servers here.
+    servers:
+        # The server's name.
+        hub:
+            # The server's name.
+            # Enable or disable automatic server startup when the program is launched. [true/false]
+            enabled: true
+            # Enter the path to the server's root directory. Continuing from the base directory.
+            dir: "hub/"
+            # Startup script for the server.
+            startup: "java -Xmx512M -jar spigot.jar"
+        # The server's name.
+        minigames:
+            # Enable or disable automatic server startup when the program is launched. [true/false]
+            enabled: true
+            # Enter the path to the server's root directory. Continuing from the base directory.
+            dir: "minigames/"
+            # Startup script for the server.
+            startup: "java -Xmx512M -jar spigot.jar"
     filters:
         # Enable or disable the custom filters. [true/false]
         enabled: true
+    # Options for the backup command.
+    backup:
+        # Enter the path where the backup files will be placed. This dose not include the base directory.
+        dir: "backups/"
 webcon:
     # Enable or disable webcon. [true/false]
     enabled: true
@@ -24,15 +47,22 @@ webcon:
     # Add as many users you want here for the webcon login.
     # format: username:password
     users:
-        - "SuperPykkon:Hello123"
-        - "hmksq:lollypop"
-        - "ThatOneKidEveryoneHates:TheMostAmazingPasswordEver"
+        - "admin:changeme"
+        - "ThatOneKidEveryoneHates:TheBestPasswordEver"
     blacklist:
         # Blacklist any *WEBCON* users from accessing webcon.
         # NOTE: Do not leave it blank. If you got no users to blacklist, 'users: []' is the way to go. Or else webcon will break.
         users:
-            - "SomePerson"
+            - "ThatOneKidEveryoneHates"
         # Blacklist any IP from accessing webcon.
         # NOTE: Do not leave it blank. If you got no IP to blacklist, 'IP: []' is the way to go. Or else webcon will break.
         IP:
             - "123.45.67.890"
+    # Enable or disable any of the messages from webcon. (Best if it's spamming the console too much.) [true/false] for all of them.
+    messages:
+        login_success: true
+        login_fail: true
+        ws_connect: true
+        ws_disconnect: true
+        # Recommended to keep true :)
+        exec_command: true

@@ -11,6 +11,7 @@
     //<![CDATA[
     $(document).ready(function() {
         var token = "{{.Token}}"
+        var server = "{{.Server}}"
         var ws;
         var togglecmdi = 1;
 
@@ -19,10 +20,9 @@
         } else { ws = initWS(); }
 
         function initWS() {
-            var socket = new WebSocket("ws://" + location.host + "/ws"),
+            var socket = new WebSocket("ws://" + location.host + "/ws?token=" + token + "&server=" + server),
                 container = $("#console")
             socket.onopen = function() {
-                container.append("<p>Socket is open</p>");
                 ws.send(JSON.stringify({"token": token, "command": "/ws-gh"}));
             }
             socket.onmessage = function (e) {
@@ -30,9 +30,7 @@
                 container.append(obj);
                 sd()
             }
-            socket.onclose = function () {
-                container.append("<p>Socket closed</p>");
-            }
+            socket.onclose = function () { }
             return socket;
         }
 

@@ -48,7 +48,7 @@ body {
 	padding:10px;
 }
 
-a{
+a {
 	color: #074E8C;
 }
 
@@ -61,7 +61,7 @@ a{
     padding: 2px 0px;
     margin-left: 8px;
 		font-family: 'Ubuntu', sans-serif;
-	display: flex;
+	  display: flex;
 }
 
 .log i {
@@ -92,12 +92,13 @@ a{
 }
 
 .time {
-	width: 64px;
+		width: 64px;
+		min-width: 64px;
 }
 
 .undefined {
     border-left: 5px solid #868989;
-	padding-left: 32px;
+		padding-left: 32px;
 }
 
 .joined {

@@ -19,44 +19,12 @@ import (
 func serverRun() {
 	fmt.Fprintln(color.Output, time.Now().Format("15:04:05")+clrDarkCyan+" | INFO: "+clrWhite+"("+clrDarkMagenta+"SERVER"+clrWhite+")"+clrDarkCyan+": "+clrMagenta+"Attempting to start "+clrYellow+strconv.Itoa(len(viper.Get("server.servers").(map[string]interface{})))+clrMagenta+" servers..."+clrEnd)
 	fmt.Fprintln(color.Output, time.Now().Format("15:04:05")+clrDarkCyan+" | INFO: "+clrWhite+"("+clrDarkMagenta+"SERVER"+clrWhite+")"+clrDarkCyan+": "+clrMagenta+"The primary server is: "+clrYellow+viper.GetString("server.primary")+clrEnd)
-	go func() {
-		input := bufio.NewReader(os.Stdin)
-		for {
-			command, _ := input.ReadString('\n')
-			serverCommandHandler(command)
-		}
-	}()
 
-	for name, _ := range viper.Get("server.servers").(map[string]interface{}) {
-		if viper.GetBool("server.servers." + name + ".enabled") {
-			fmt.Fprintln(color.Output, time.Now().Format("15:04:05")+clrDarkCyan+" | INFO: "+clrWhite+"("+clrDarkMagenta+"SERVER"+clrWhite+")"+clrDarkCyan+": "+clrMagenta+"Attempting to start the server: "+clrYellow+name+clrEnd)
-			process := exec.Command(strings.Fields(viper.GetString("server.servers." + name + ".startup"))[0], strings.Fields(viper.GetString("server.servers." + name + ".startup"))[1:]...)
-			process.Dir = viper.GetString("server.base") + viper.GetString("server.servers."+name+".dir")
-			var status string
-
-			stdin, err := process.StdinPipe()
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "Error creating StdinPipe for the process:\n"+err.Error())
-				status = "Failed #1"
-			}
-			defer stdin.Close()
-
-			stdout, err := process.StdoutPipe()
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "Error creating StdoutPipe for the process:\n"+err.Error())
-				status = "Failed #2"
-			}
-
-			status = "Running"
-			wg.Add(1)
-			go serverLogHandler(name, process, stdin, stdout, status)
-		}
-	}
 	wg.Wait()
 	fmt.Fprintln(color.Output, time.Now().Format("15:04:05")+clrDarkCyan+" | INFO: "+clrWhite+"("+clrDarkMagenta+"SERVER"+clrWhite+")"+clrDarkCyan+": "+clrMagenta+"All servers have been exited."+clrEnd)
 }
 
-func serverLogHandler(name string, process *exec.Cmd, stdin io.WriteCloser, stdout io.ReadCloser, status string) bool {
+func serverLogHandler(name string, process *exec.Cmd, stdin io.WriteCloser, stdout io.ReadCloser, status string) {
 	output := bufio.NewScanner(stdout)
 	go func() {
 		for output.Scan() {
@@ -64,7 +32,7 @@ func serverLogHandler(name string, process *exec.Cmd, stdin io.WriteCloser, stdo
 				if name == activeServer {
 					fmt.Fprintln(color.Output, filters(output.Text()+"\n", "main"))
 				}
-				servers[name].Logs[len(servers[name].Logs)] = slogs{Type: "server", Log: output.Text()}
+				servers[name].logs[len(servers[name].logs)] = slogs{Type: "server", Log: output.Text()}
 				for _, ud := range wsConns {
 					if ud.Server == name {
 						ud.Conn.WriteJSON(filters(output.Text(), "webcon"))
@@ -73,26 +41,8 @@ func serverLogHandler(name string, process *exec.Cmd, stdin io.WriteCloser, stdo
 			}
 		}
 	}()
-	status = "Running"
-
-	servers[name] = server{Process: process, StdinPipe: stdin, StdoutPipe: stdout, Logs: make(map[int]slogs), Status: status}
-	svr := servers[name]
-	if err := servers[name].Process.Start(); err != nil {
-		fmt.Fprintln(os.Stderr, "Error: Failed to start the server: "+name+"\n"+err.Error())
-		status = "Failed #3"
-	}
-	if err := servers[name].Process.Wait(); err != nil {
-		fmt.Fprintln(os.Stderr, "Error: Failed to wait for the process on the server: "+name+"\n"+err.Error())
-		status = "Failed #4"
-	}
-	if status == "Running" {
-		status = "Stopped"
-	}
-	svr.Status = status
-	servers[name] = svr
 
 	wg.Done()
-	return true
 }
 
 func serverCommandHandler(command string) {
@@ -145,10 +95,10 @@ func serverCommandHandler(command string) {
 						fmt.Fprintln(color.Output, clrYellow+"To switch to a different server, use "+clrMagenta+"!server [server]"+clrEnd)
 						fmt.Fprintln(color.Output, clrYellow+"Available servers: "+clrEnd)
 						for s, sd := range servers {
-							if sd.Status == "Failed #1" || sd.Status == "Failed #2" || sd.Status == "Failed #3" || sd.Status == "Failed #4" || sd.Status == "Stopped" {
-								fmt.Fprintln(color.Output, clrWhite+" -  "+clrDarkCyan+s+"    "+clrRed+sd.Status+clrEnd)
-							} else if sd.Status == "Running" {
-								fmt.Fprintln(color.Output, clrWhite+" -  "+clrDarkCyan+s+"    "+clrGreen+sd.Status+clrEnd)
+							if sd.status == IDLE || sd.status == FAILED {
+								fmt.Fprintln(color.Output, clrWhite+" -  "+clrDarkCyan+s+"    "+clrRed+string(sd.status)+clrEnd)
+							} else if sd.status == RUNNING {
+								fmt.Fprintln(color.Output, clrWhite+" -  "+clrDarkCyan+s+"    "+clrGreen+string(sd.status)+clrEnd)
 							}
 						}
 					} else if len(strings.Fields(command)) == 2 {
@@ -156,8 +106,8 @@ func serverCommandHandler(command string) {
 							if s == string(strings.Fields(command)[1]) {
 								activeServer = strings.Fields(command)[1]
 								serverCommandHandler("!clear")
-								for i := 0; i < len(servers[activeServer].Logs); i++ {
-									fmt.Fprintln(color.Output, filters(servers[activeServer].Logs[i].Log+"\n", "main"))
+								for i := 0; i < len(servers[activeServer].logs); i++ {
+									fmt.Fprintln(color.Output, filters(servers[activeServer].logs[i].Log+"\n", "main"))
 								}
 								break cmd
 							}
@@ -168,12 +118,12 @@ func serverCommandHandler(command string) {
 							if len(strings.Fields(command)) > 3 {
 								if strings.Fields(command)[1] == "*" {
 									for _, sd := range servers {
-										io.WriteString(sd.StdinPipe, strings.Join(strings.Fields(command)[3:], " ")+"\n")
+										io.WriteString(sd.stdinPipe, strings.Join(strings.Fields(command)[3:], " ")+"\n")
 									}
 								} else {
 									for s, _ := range viper.Get("server.servers").(map[string]interface{}) {
 										if s == string(strings.Fields(command)[1]) {
-											io.WriteString(servers[string(strings.Fields(command)[1])].StdinPipe, strings.Join(strings.Fields(command)[3:], " ")+"\n")
+											io.WriteString(servers[string(strings.Fields(command)[1])].stdinPipe, strings.Join(strings.Fields(command)[3:], " ")+"\n")
 											break cmd
 										}
 									}
@@ -189,7 +139,7 @@ func serverCommandHandler(command string) {
 								fmt.Println("!server " + string(strings.Fields(command)[1]) + " exec restart")
 								serverCommandHandler("!server " + string(strings.Fields(command)[1]) + " exec restart")
 								svr := servers[string(strings.Fields(command)[1])]
-								svr.Status = "Restarting"
+								svr.status = RESTARTING
 								servers[string(strings.Fields(command)[1])] = svr
 							}
 						} else if strings.Fields(command)[2] == "backup" {
@@ -256,17 +206,17 @@ func serverCommandHandler(command string) {
 		switch strings.TrimSpace(command) {
 		case "stop":
 			fmt.Fprintln(color.Output, time.Now().Format("15:04:05")+clrDarkCyan+" | INFO: "+clrWhite+"("+clrDarkMagenta+"SERVER"+clrWhite+")"+clrDarkCyan+": "+clrMagenta+"Received stop command, exiting the server..."+clrEnd)
-			io.WriteString(servers[activeServer].StdinPipe, command+"\n")
-			servers[activeServer].Process.Wait()
+			io.WriteString(servers[activeServer].stdinPipe, command+"\n")
+			servers[activeServer].process.Wait()
 
 		case "restart":
 			fmt.Fprintln(color.Output, time.Now().Format("15:04:05")+clrDarkCyan+" | INFO: "+clrWhite+"("+clrDarkMagenta+"SERVER"+clrWhite+")"+clrDarkCyan+": "+clrMagenta+"Received restart command, restarting the server..."+clrEnd)
-			io.WriteString(servers[activeServer].StdinPipe, "stop\n")
-			servers[activeServer].Process.Wait()
+			io.WriteString(servers[activeServer].stdinPipe, "stop\n")
+			servers[activeServer].process.Wait()
 
 		default:
-			io.WriteString(servers[activeServer].StdinPipe, command+"\n")
-			servers[activeServer].Process.Wait()
+			io.WriteString(servers[activeServer].stdinPipe, command+"\n")
+			servers[activeServer].process.Wait()
 		}
 	}
 }

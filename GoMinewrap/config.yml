@@ -7,7 +7,7 @@ version: "0.3"
 server:
     # Enter the path to the folder with all your servers
     base: "servers/"
-    # Enter the primary/main server here. CaSe SeNsItIvE
+    # Enter the primary/main server here. CaSe SeNsItIvE (deprecated)
     primary: "hub"
     # Add all your servers here.
     servers:
@@ -43,7 +43,7 @@ webcon:
     # Which host will webcon run on.
     host: ""
     # Which port will webcon run on.
-    port: "80"
+    port: "25465"
     # Add as many users you want here for the webcon login.
     # format: username:password
     users:

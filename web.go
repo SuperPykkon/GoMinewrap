@@ -20,9 +20,6 @@ import (
 func webconHandler() {
 	time.Sleep(time.Millisecond * 1500)
 
-	fmt.Fprintln(color.Output, time.Now().Format("15:04:05")+clrDarkCyan+" | INFO: "+clrWhite+"("+clrDarkMagenta+"WEBCON"+clrWhite+")"+clrDarkCyan+": "+clrMagenta+"Starting the web server on: "+viper.GetString("webcon.host")+":"+viper.GetString("webcon.port")+" ..."+clrEnd)
-	fmt.Fprintln(color.Output, time.Now().Format("15:04:05")+clrDarkCyan+" | INFO: "+clrWhite+"("+clrDarkMagenta+"WEBCON"+clrWhite+")"+clrDarkCyan+": "+clrGreen+"Loaded "+clrDarkCyan+strconv.Itoa(len(viper.Get("webcon.users").([]interface{})))+clrGreen+" users for webcon login."+clrEnd)
-
 	http.Handle("/", webconAuthValidate(webconRootHandler))
 	http.HandleFunc("/ws", wsHandler)
 	http.HandleFunc("/login", webconAuthLogin)
@@ -194,12 +191,6 @@ func webconAuthLogout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/login", 307)
 }
 
-/*
-
-   Webcon Websocket
-
-*/
-
 func wsHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Origin") != "http://"+r.Host {
 		http.Error(w, "Origin not allowed", 403)
@@ -247,9 +238,9 @@ func wsConnectionHandler(conn *websocket.Conn, IP string, CID int, server string
 		})
 		if claims, ok := token.Claims.(*Claims); ok && token.Valid {
 			if exec.Command == "/ws-gh" {
-				for i := 0; i <= len(servers[server].Logs); i++ {
-					if servers[server].Logs[i].Type == "server" {
-						conn.WriteJSON(filters(servers[server].Logs[i].Log, "webcon"))
+				for i := 0; i <= len(servers[server].logs); i++ {
+					if servers[server].logs[i].Type == "server" {
+						conn.WriteJSON(filters(servers[server].logs[i].Log, "webcon"))
 					}
 				}
 			} else {
@@ -259,11 +250,11 @@ func wsConnectionHandler(conn *websocket.Conn, IP string, CID int, server string
 					}
 				}
 				if viper.GetBool("webcon.messages.exec_command") {
-					servers[server].Logs[len(servers[server].Logs)] = slogs{Type: "webcon", Log: time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ")" + clrDarkCyan + ": " + clrYellow + claims.Username + clrEnd + " executed a server command: " + clrCyan + "/" + exec.Command + clrEnd}
+					servers[server].logs[len(servers[server].logs)] = slogs{Type: "webcon", Log: time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ")" + clrDarkCyan + ": " + clrYellow + claims.Username + clrEnd + " executed a server command: " + clrCyan + "/" + exec.Command + clrEnd}
 				}
 
 				time.Sleep(time.Millisecond)
-				io.WriteString(servers[server].StdinPipe, exec.Command+"\n")
+				io.WriteString(servers[server].stdinPipe, exec.Command+"\n")
 			}
 		}
 	}

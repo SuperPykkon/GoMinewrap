@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -83,25 +85,43 @@ type slogs struct {
 	Log  string
 }
 
-type server struct {
-	Process    *exec.Cmd
-	StdinPipe  io.WriteCloser
-	StdoutPipe io.ReadCloser
-	Logs       map[int]slogs
-	Status     string
+type Server struct {
+	process    *exec.Cmd
+	stdinPipe  io.WriteCloser
+	stdoutPipe io.ReadCloser
+	logs       map[int]slogs
+	status     ServerStatus
 }
 
-var servers = make(map[string]server)
+type ServerStatus int64
+
+const (
+	// RUNNING is when the server is up and running
+	RUNNING = iota
+
+	// RESTARTING is when the server is up and running
+	RESTARTING = iota
+
+	// IDLE is when the server is not running
+	IDLE = iota
+
+	// FAILED is when the server failed to start
+	FAILED = iota
+)
+
+var servers map[string]Server
 
 // Current server screen
 var activeServer string
 
 var config, configDir string
 var users map[string]string
+
 var wg sync.WaitGroup
 
 func main() {
 	users = make(map[string]string)
+	servers = make(map[string]Server)
 
 	flags := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	flags.StringVar(&config, "config", "config", "Name of config file (without extension)")
@@ -123,23 +143,40 @@ func main() {
 
 	// Run the web console if it is enabled
 	if viper.GetBool("webcon.enabled") {
+		fmt.Fprintln(color.Output, clrWhite+"("+clrDarkMagenta+"WEBCON"+clrWhite+")"+clrDarkCyan+": "+clrMagenta+"Starting the web server on: "+viper.GetString("webcon.host")+":"+viper.GetString("webcon.port")+" with "+clrDarkCyan+strconv.Itoa(len(viper.Get("webcon.users").([]interface{})))+clrMagenta+" users loaded."+clrEnd)
 		for _, u := range viper.Get("webcon.users").([]interface{}) {
 			users[strings.Split(u.(string), ":")[0]] = strings.Split(u.(string), ":")[1]
 		}
 		go webconHandler()
 	}
-
 	// Enable filters is it is set
 	enableFilters = viper.GetBool("server.filters.enabled")
-	for s, _ := range viper.Get("server.servers").(map[string]interface{}) {
-		if s == viper.GetString("server.primary") {
-			activeServer = s
+
+	// Load servers
+	fmt.Fprintln(color.Output, clrYellow+"Loaded servers: "+clrEnd)
+
+	for name, _ := range viper.Get("server.servers").(map[string]interface{}) {
+		if viper.GetBool("server.servers." + name + ".enabled") {
+			nprocess := exec.Command(strings.Fields(viper.GetString("server.servers." + name + ".startup"))[0], strings.Fields(viper.GetString("server.servers." + name + ".startup"))[1:]...)
+			nprocess.Dir = viper.GetString("server.base") + viper.GetString("server.servers."+name+".dir")
+			stdin, _ := nprocess.StdinPipe()
+			stdout, _ := nprocess.StdoutPipe()
+			servers[name] = Server{process: nprocess, stdinPipe: stdin, stdoutPipe: stdout, logs: make(map[int]slogs), status: IDLE}
+			fmt.Fprintln(color.Output, clrWhite+" -  "+clrDarkCyan+name+clrEnd)
+
 		}
 	}
-	if activeServer == "" {
-		fmt.Fprintln(color.Output, time.Now().Format("15:04:05")+clrDarkCyan+" | INFO: "+clrWhite+"("+clrDarkMagenta+"VIPER"+clrWhite+")"+clrDarkCyan+": "+clrRed+"Error: Invalid primary server '"+clrYellow+viper.GetString("server.primary")+clrRed+"'"+clrEnd)
-		os.Exit(1)
-	}
 
-	serverRun()
+	go func() {
+		input := bufio.NewReader(os.Stdin)
+		for {
+			command, _ := input.ReadString('\n')
+			serverCommandHandler(command)
+		}
+	}()
+
+	fmt.Fprintln(color.Output, clrYellow+"Type !help to for help."+clrEnd)
+
+	for true {
+	}
 }

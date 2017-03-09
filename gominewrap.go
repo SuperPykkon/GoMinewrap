@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"io"
@@ -9,7 +8,6 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
@@ -117,8 +115,6 @@ var activeServer string
 var config, configDir string
 var users map[string]string
 
-var wg sync.WaitGroup
-
 func main() {
 	users = make(map[string]string)
 	servers = make(map[string]Server)
@@ -142,9 +138,9 @@ func main() {
 	fmt.Println("Running GoMinewrap v" + viper.GetString("version") + " by SuperPykkon released under MIT license.")
 
 	// Run the web console if it is enabled
-	if viper.GetBool("webcon.enabled") {
-		fmt.Fprintln(color.Output, clrWhite+"("+clrDarkMagenta+"WEBCON"+clrWhite+")"+clrDarkCyan+": "+clrMagenta+"Starting the web server on: "+viper.GetString("webcon.host")+":"+viper.GetString("webcon.port")+" with "+clrDarkCyan+strconv.Itoa(len(viper.Get("webcon.users").([]interface{})))+clrMagenta+" users loaded."+clrEnd)
-		for _, u := range viper.Get("webcon.users").([]interface{}) {
+	if viper.GetBool("web.enabled") {
+		fmt.Fprintln(color.Output, clrWhite+"("+clrDarkMagenta+"WEB"+clrWhite+")"+clrDarkCyan+": "+clrMagenta+"Starting the web server on: "+viper.GetString("web.host")+":"+viper.GetString("web.port")+" with "+clrDarkCyan+strconv.Itoa(len(viper.Get("web.users").([]interface{})))+clrMagenta+" users loaded."+clrEnd)
+		for _, u := range viper.Get("web.users").([]interface{}) {
 			users[strings.Split(u.(string), ":")[0]] = strings.Split(u.(string), ":")[1]
 		}
 		go webconHandler()
@@ -166,16 +162,6 @@ func main() {
 
 		}
 	}
-
-	go func() {
-		input := bufio.NewReader(os.Stdin)
-		for {
-			command, _ := input.ReadString('\n')
-			serverCommandHandler(command)
-		}
-	}()
-
-	fmt.Fprintln(color.Output, clrYellow+"Type !help to for help."+clrEnd)
 
 	for true {
 	}

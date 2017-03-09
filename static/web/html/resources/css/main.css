@@ -11,7 +11,7 @@ html, body {
 body {
 	min-height: 100%;
 	height: auto;
-	background-color: #111317;
+	background-color: #ffffff;
 	font-family: 'Ubuntu', sans-serif;
 	color: #868989;
 }
@@ -33,6 +33,33 @@ body {
     padding: 40px;
     border: 1px solid #ddd;
     border-radius: 10px;
+}
+
+#webcon {
+	  background-color: #111317 !important;
+}
+
+#sidebar > .container {
+	  padding: 20px;
+}
+
+#sidebar > .container > .ui.header.medium {
+    color: #fff !important;
+    text-align: center;
+    font-weight: 100;
+    margin: 0;
+}
+
+#sidebar > .container > .ui.header.small {
+    color: #fff !important;
+    font-weight: bold;
+    text-transform: uppercase;
+    font-size: 11px;
+}
+
+#sidebar > a > .ui.two.column.doubling.stackable.grid.container > .right.aligned.column {
+    text-transform: uppercase;
+    font-size: 10px;
 }
 
 .hidden {

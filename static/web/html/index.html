@@ -5,6 +5,7 @@
     <title>Webcon - {{.Username}}</title>
     <base href="/">
     <script type="text/javascript" src="resources/js/jquery-3.1.1.min.js"></script>
+    <script type="text/javascript" src="resources/js/semantic.min.js"></script>
     <link rel="stylesheet" href="resources/css/semantic.min.css" />
     <link rel="stylesheet" href="resources/css/main.css" />
     <script type="text/javascript">
@@ -83,20 +84,45 @@
                	togglecmdi = 0;
          	  }
          });
+
+         $(".ui.black.big.launch.right.attached.fixed.button").click(function() {
+           $('.ui.sidebar')
+             .sidebar('setting', 'transition', 'overlay')
+             .sidebar('toggle')
+           ;
+         });
     });
     //]]>
     </script>
   </head>
-  <body>
-    <div class="update" id="console"></div>
-    <div id="sd"></div>
+  <body id="webcon">
+    <div style="position: fixed; top: 2.5em; left: 0px; width: 55px; padding: 1em;" class="ui black big launch right attached fixed button">
+      <i class="content icon"></i>
+    </div>
+    <div id="sidebar" class="ui sidebar inverted vertical menu">
+      <div class="container">
+          <div class="ui header medium">GoMinewrap - webcon</div>
+          <div class="ui header small" style="margin-top: 0; text-align: center;">{{ .Name }}</div>
+          <div class="ui header small">Servers:</div>
+      </div>
+      {{ range $name, $sd := .Servers}}
+        <a class="item" href="?server={{ $name }}">
+          <div class="ui two column doubling stackable grid container">
+            <div class="column">{{ $name }}</div>
+          </div>
+        </a>
+      {{ end }}
+    </div>
+    <div class="pusher">
+      <div class="update" id="console"></div>
+      <div id="sd"></div>
 
-    <div id="infologs"></div>
-    <div class="cmd-input hidden">
-      <div class="cmd-wrapper">
-        <div class="cmd-type"></div>
-        <input type="text" id="cmd-input" placeholder="Enter a command... Press enter to execute." />
-    	</div>
+      <div class="cmd-input hidden">
+        <div class="cmd-wrapper">
+          <div class="cmd-type"></div>
+          <input type="text" id="cmd-input" placeholder="Enter a command... Press enter to execute." />
+        </div>
+      </div>
     </div>
   </body>
 </html>

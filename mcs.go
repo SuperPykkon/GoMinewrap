@@ -68,6 +68,8 @@ type consoleTemplate struct {
     Username string
     Token string
     Server string
+    Name string
+    Servers map[string] interface{}
 }
 
 type consoleLogin struct {
@@ -568,13 +570,13 @@ func webconRootHandler(w http.ResponseWriter, r *http.Request)  {
         }
 
         if !blocked {
-            if server {
+            if server || len(r.URL.Query()["server"]) == 0 {
                 cookie, _ := r.Cookie("Auth")
                 var temp consoleTemplate
                 if len(r.URL.Query()["server"]) > 0 {
-                    temp = consoleTemplate{Username: claims.Username, Token: cookie.Value, Server: strings.Join(r.URL.Query()["server"], " ")}
+                    temp = consoleTemplate{Username: claims.Username, Token: cookie.Value, Server: strings.Join(r.URL.Query()["server"], " "), Name: viper.GetString("server.name"), Servers: viper.Get("server.servers").(map[string]interface{})}
                 } else {
-                    temp = consoleTemplate{Username: claims.Username, Token: cookie.Value, Server: viper.GetString("server.primary")}
+                    temp = consoleTemplate{Username: claims.Username, Token: cookie.Value, Server: viper.GetString("server.primary"), Name: viper.GetString("server.name"), Servers: viper.Get("server.servers").(map[string]interface{})}
                 }
 
                 t := template.Must(template.ParseFiles(viper.GetString("webcon.dir") + "index.html"))

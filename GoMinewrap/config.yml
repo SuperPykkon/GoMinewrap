@@ -5,6 +5,8 @@
 # Do not change.
 version: "0.3"
 server:
+    # What's the name of your server?
+    name: "Alephnull"
     # Enter the path to the folder with all your servers
     base: "servers/"
     # Enter the primary/main server here. CaSe SeNsItIvE

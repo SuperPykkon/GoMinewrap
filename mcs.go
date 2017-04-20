@@ -557,8 +557,8 @@ func filters(text string, type_ string) string {
 func webconHandler() {
     time.Sleep(time.Millisecond * 1500)
 
-    fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ")" + clrDarkCyan + ": " + clrMagenta + "Starting the web server on: " + viper.GetString("webcon.host") + ":" + viper.GetString("webcon.port") + " ..." + clrEnd)
-    fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ")" + clrDarkCyan + ": " + clrGreen + "Loaded " + clrDarkCyan + strconv.Itoa(len(viper.Get("webcon.users").([]interface{}))) + clrGreen + " users for webcon login." + clrEnd)
+    fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ")" + clrDarkCyan + ": " + clrDarkYellow + "Starting the web server on: " + clrDarkCyan + viper.GetString("webcon.host") + ":" + viper.GetString("webcon.port") + clrDarkYellow + " ..." + clrEnd)
+    fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ")" + clrDarkCyan + ": " + clrDarkYellow + "Loaded " + clrDarkCyan + strconv.Itoa(len(viper.Get("webcon.users").([]interface{}))) + clrDarkYellow + " users for webcon login." + clrEnd)
 
     http.Handle("/", webconAuthValidate(webconRootHandler))
     http.HandleFunc("/ws", wsHandler)

@@ -15,5 +15,13 @@ Executables available for Windows, Linux and Mac.
 ## Screenshots
 * http://imgur.com/gallery/0ghEC
 
+## Features
+* Completely changes the way the console logs are displayed.
+* Multi server support. You can add and run as many servers as you want.
+* Real time web based console with authentication which has multi user support.
+* A fully functional backup command. You can backup a single or all server (s) with one simple command.
+* Very customizable. You can change almost everything to your likings on the config file.
+... And much more!
+
 ## Running
 You will need to configure the configuration under `GoMinewrap/config.yml` to set the servers for the wrapper. You can manually set the config path using a flag. By default, the web server runs on port 80. For help on wrapper commands, type !help on the command line.

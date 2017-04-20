@@ -3,7 +3,7 @@
 #
 
 # Do not change.
-version: "0.3"
+version: "0.3.1"
 server:
     # What's the name of your server?
     name: "Alephnull"
@@ -39,7 +39,7 @@ server:
         dir: "backups/"
 webcon:
     # Enable or disable webcon. [true/false]
-    enabled: false
+    enabled: true
     # Enter the path to webcon's html files.
     dir: "static/web/html/"
     # Which host will webcon run on.

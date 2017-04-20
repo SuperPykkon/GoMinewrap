@@ -142,7 +142,7 @@ func main() {
         os.Exit(1)
     }
 
-    fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "SERVER" + clrWhite + ")" + clrDarkCyan + ": " + clrDarkYellow + "Attempting to start " + clrDarkGreen + strconv.Itoa(len(viper.Get("server.servers").(map[string]interface{}))) + clrDarkYellow + " servers\n                           with the primary server: " + clrDarkGreen + viper.GetString("server.primary") + clrEnd)
+    fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "SERVER" + clrWhite + ")" + clrDarkCyan + ": " + clrDarkYellow + "Attempting to start " + clrDarkCyan + strconv.Itoa(len(viper.Get("server.servers").(map[string]interface{}))) + clrDarkYellow + " servers\n                           with the primary server: " + clrDarkCyan + viper.GetString("server.primary") + clrEnd)
     go func() {
         input := bufio.NewReader(os.Stdin)
         for {
@@ -173,7 +173,6 @@ func serverRun(server string) {
             }
         }
     } else {
-        fmt.Println("Starting server")
         wg.Add(1)
         go serverHandler(server)
     }
@@ -370,7 +369,7 @@ func serverCommandHandler(command string) {
                                 if strings.Fields(command)[1] == "*" {
                                     fmt.Fprintln(color.Output, clrDarkGray + "[" + clrRed + "*" + clrDarkGray + "]" + clrYellow + " GoMinewrap » " + clrGreen + "Begin backup of the server: " + clrYellow + "all servers" + clrGreen +  "." + clrEnd)
                                     for name, _ := range viper.Get("server.servers").(map[string]interface{}) {
-                                        fmt.Fprintln(color.Output, clrDarkGray + "[" + clrRed + "*" + clrDarkGray + "]" + clrYellow + " GoMinewrap » " + clrGreen + "  ...backing up the server: " + clrYellow + name + clrGreen +  "." + clrEnd)
+                                        fmt.Fprintln(color.Output, clrDarkGray + "[" + clrRed + "*" + clrDarkGray + "]" + clrYellow + " GoMinewrap » " + clrGreen + "  ... backing up the server: " + clrYellow + name + clrGreen +  "." + clrEnd)
                                         if runtime.GOOS == "windows" {
                                             cmd := exec.Command("cmd", "/c", "robocopy", "../../" + viper.GetString("server.base") + viper.GetString("server.servers." + name + ".dir"), viper.GetString("server.servers." + name + ".dir"), "/MIR")
                                               cmd.Dir = viper.GetString("server.backup.dir") + t
@@ -393,7 +392,7 @@ func serverCommandHandler(command string) {
                                         cmd.Run()
                                     }
                                 }
-                                fmt.Fprintln(color.Output, clrDarkGray + "[" + clrRed + "*" + clrDarkGray + "]" + clrYellow + " GoMinewrap » " + clrGreen + "Backup complete: " + clrYellow + viper.GetString("server.backup.dir") + t + "..." + clrEnd)
+                                fmt.Fprintln(color.Output, clrDarkGray + "[" + clrRed + "*" + clrDarkGray + "]" + clrYellow + " GoMinewrap » " + clrGreen + "Backup complete: " + clrYellow + viper.GetString("server.backup.dir") + t + " ..." + clrEnd)
                             }
                         }
                         break cmd

@@ -8,8 +8,12 @@ It allows you to control multiple server, switch between them, and even back the
 ## Cloning and Building
 1. `go get github.com/SuperPykkon/GoMinewrap`  
 2. `cd $GOPATH/src/github.com/SuperPykkon/GoMinewrap`  
-3. `go run *.go`  
-Pre-compiled executables are available on the releases tab.
+3. `go run mcs.go`  
+Pre-compiled executables are available on the [releases tab](https://github.com/SuperPykkon/GoMinewrap/releases).  
+Executables available for Windows, Linux and Mac.
+
+## Screenshots
+* http://imgur.com/gallery/0ghEC
 
 ## Running
-You will need to configure the configuration under `GoMinewrap/config.yml` to set the servers for the wrapper. You can manually set the config path using a flag. By default, the web server runs on port 25465. For help on wrapper commands, type !help on the command line.
+You will need to configure the configuration under `GoMinewrap/config.yml` to set the servers for the wrapper. You can manually set the config path using a flag. By default, the web server runs on port 80. For help on wrapper commands, type !help on the command line.

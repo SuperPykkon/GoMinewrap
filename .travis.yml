@@ -1,6 +1,4 @@
 language: go
 go:
  - tip
-
-script:
-  - $HOME/gopath/bin/goveralls -service=travis-ci
+ 

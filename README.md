@@ -18,6 +18,7 @@ Executables available for Windows, Linux and Mac.
 ## Features
 * Completely changes the way the console logs are displayed.
 * Multi server support. You can add and run as many servers as you want.
+* Switch between server(s) (If you're running more than one server) with one simple command. It's almost like switching between screen sessions!
 * Real time web based console with authentication which has multi user support.
 * A fully functional backup command. You can backup a single or all server (s) with one simple command.
 * Very customizable. You can change almost everything to your likings on the config file.

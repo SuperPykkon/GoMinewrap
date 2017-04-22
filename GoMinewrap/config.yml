@@ -3,7 +3,7 @@
 #
 
 # Do not change.
-version: "0.3.1"
+version: "0.3.2"
 server:
     # What's the name of your server?
     name: "Alephnull"

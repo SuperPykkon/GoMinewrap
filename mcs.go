@@ -43,8 +43,8 @@ const (
     clrEnd = "\x1b[0m"
 )
 
-type Key int
-const MyKey Key = 0
+type key int
+const myKey key = 0
 
 var (
     enableFilters bool = true
@@ -54,15 +54,15 @@ var (
     logWebconErrorSpacer bool
 )
 
-type Claims struct {
+type cookieClaims struct {
     Username string `json:"username"`
     // recommended having
     jwt.StandardClaims
 }
 
 type wsExec struct {
-    Token string `json: "token"`
-    Command string `json: "command"`
+    Token string `json:"token"`
+    Command string `json:"command"`
 }
 
 type consoleTemplate struct {
@@ -132,7 +132,7 @@ func main() {
         go webconHandler()
     }
     enableFilters = viper.GetBool("server.filters.enabled")
-    for s, _ := range viper.Get("server.servers").(map[string]interface{}) {
+    for s := range viper.Get("server.servers").(map[string]interface{}) {
         if s == viper.GetString("server.primary") {
             activeServer = s
         }
@@ -165,7 +165,7 @@ func main() {
 
 func serverRun(server string) {
     if server == "*" {
-        for name, _ := range viper.Get("server.servers").(map[string] interface{}) {
+        for name := range viper.Get("server.servers").(map[string] interface{}) {
             if viper.GetBool("server.servers." + name + ".enabled") {
                 wg.Add(1)
                 go serverHandler(name)
@@ -199,17 +199,40 @@ func serverHandler(name string) bool {
         status = "Failed"
     }
 
-    output := bufio.NewScanner(stdout)
+    stderr, err := process.StderrPipe()
+    if err != nil {
+        fmt.Fprintln(os.Stderr, "Error creating StderrPipe for the process:\n" + err.Error())
+        status = "Failed"
+    }
+
+    stdouto := bufio.NewScanner(stdout)
     go func() {
-        for output.Scan() {
-            if output.Text() != "" {
+        for stdouto.Scan() {
+            if stdouto.Text() != "" {
                 if name == activeServer {
-                    fmt.Fprintln(color.Output, filters(output.Text() + "\n", "main"))
+                    fmt.Fprintln(color.Output, filters(stdouto.Text() + "\n", "main"))
                 }
-                servers[name].Logs[len(servers[name].Logs)] = slogs{Type: "server", Log: output.Text()}
+                servers[name].Logs[len(servers[name].Logs)] = slogs{Type: "server", Log: stdouto.Text()}
                 for _, ud := range wsConns {
                     if ud.Server == name {
-                        ud.Conn.WriteJSON(filters(output.Text(), "webcon"))
+                        ud.Conn.WriteJSON(filters(stdouto.Text(), "webcon"))
+                    }
+                }
+            }
+        }
+    } ()
+
+    stderro := bufio.NewScanner(stderr)
+    go func() {
+        for stderro.Scan() {
+            if stderro.Text() != "" {
+                if name == activeServer {
+                    fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkRed + " stderr: " + clrRed + stderro.Text() + clrEnd + "\n")
+                }
+                servers[name].Logs[len(servers[name].Logs)] = slogs{Type: "server", Log: time.Now().Format("15:04:05") + clrDarkRed + " stderr: " + clrRed + stderro.Text() + clrEnd + "\n"}
+                for _, ud := range wsConns {
+                    if ud.Server == name {
+                        ud.Conn.WriteJSON(time.Now().Format("15:04:05") + " stderr: " + stderro.Text())
                     }
                 }
             }
@@ -221,14 +244,15 @@ func serverHandler(name string) bool {
         status = "Failed"
     }
 
-    server_ := server{Process: process, StdinPipe: stdin, StdoutPipe: stdout, PID: process.Process.Pid, Logs: make(map[int] slogs), Status: status}
-    servers[name] = server_
+    svr := server{Process: process, StdinPipe: stdin, StdoutPipe: stdout, PID: process.Process.Pid, Logs: make(map[int] slogs), Status: status}
+    servers[name] = svr
 
     if err := process.Wait(); err != nil {
         fmt.Fprintln(os.Stderr, "Error: Failed to wait for the process on the server: " + name + "\n" + err.Error())
     }
-    server_.Status = "Stopped"
-    servers[name] = server_
+
+    if status != "Failed" { svr.Status = "Stopped" }
+    servers[name] = svr
 
     fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "SERVER" + clrWhite + ")" + clrDarkCyan + ": " + clrDarkYellow + "Server closed: " + clrDarkCyan + name + clrEnd)
 
@@ -272,7 +296,7 @@ func serverCommandHandler(command string) {
                                 fmt.Fprintln(color.Output, clrDarkGray + "[" + clrRed + "*" + clrDarkGray + "]" + clrYellow + " GoMinewrap » " + clrDarkCyan + "Turned " + clrRed + "off" + clrDarkCyan + " custom log filtering." + clrEnd)
                                 enableFilters = false
                             } else {
-                                fmt.Fprintln(color.Output, clrDarkGray + "[" + clrRed + "*" + clrDarkGray + "]" + clrYellow + " GoMinewrap » " + clrDarkCyan + "Unknown arguement '" + strings.Fields(command)[1] + "'. !filters [on/off]" + clrEnd)
+                                fmt.Fprintln(color.Output, clrDarkGray + "[" + clrRed + "*" + clrDarkGray + "]" + clrYellow + " GoMinewrap » " + clrDarkCyan + "Unknown argument '" + strings.Fields(command)[1] + "'. !filters [on/off]" + clrEnd)
                             }
                         } else {
                             fmt.Fprintln(color.Output, clrDarkGray + "[" + clrRed + "*" + clrDarkGray + "]" + clrYellow + " GoMinewrap » " + clrDarkCyan + "Usage: !filters [on/off]" + clrEnd)
@@ -292,7 +316,7 @@ func serverCommandHandler(command string) {
                             }
                             serversTable.Flush()
                         } else if len(strings.Fields(command)) == 2 {
-                            for s, _ := range viper.Get("server.servers").(map[string]interface{}) {
+                            for s := range viper.Get("server.servers").(map[string]interface{}) {
                                 if s == string(strings.Fields(command)[1]) {
                                     activeServer = strings.Fields(command)[1]
                                     serverCommandHandler("!clear")
@@ -311,7 +335,7 @@ func serverCommandHandler(command string) {
                                             io.WriteString(sd.StdinPipe, strings.Join(strings.Fields(command)[3:], " ")  + "\n")
                                         }
                                     } else {
-                                        for s, _ := range viper.Get("server.servers").(map[string]interface{}) {
+                                        for s := range viper.Get("server.servers").(map[string]interface{}) {
                                             if s == string(strings.Fields(command)[1]) {
                                                 io.WriteString(servers[string(strings.Fields(command)[1])].StdinPipe, strings.Join(strings.Fields(command)[3:], " ") + "\n")
                                                 break cmd
@@ -327,7 +351,7 @@ func serverCommandHandler(command string) {
                                     fmt.Println("Failed to kill process.")
                                 }
                             } else if strings.Fields(command)[2] == "start" {
-                                for name, _ := range servers {
+                                for name := range servers {
                                     if name == strings.Fields(command)[1] {
                                         if servers[string(strings.Fields(command)[1])].Status == "Stopped" {
                                             go serverRun(strings.Fields(command)[1])
@@ -368,7 +392,7 @@ func serverCommandHandler(command string) {
 
                                 if strings.Fields(command)[1] == "*" {
                                     fmt.Fprintln(color.Output, clrDarkGray + "[" + clrRed + "*" + clrDarkGray + "]" + clrYellow + " GoMinewrap » " + clrGreen + "Begin backup of the server: " + clrYellow + "all servers" + clrGreen +  "." + clrEnd)
-                                    for name, _ := range viper.Get("server.servers").(map[string]interface{}) {
+                                    for name := range viper.Get("server.servers").(map[string]interface{}) {
                                         fmt.Fprintln(color.Output, clrDarkGray + "[" + clrRed + "*" + clrDarkGray + "]" + clrYellow + " GoMinewrap » " + clrGreen + "  ... backing up the server: " + clrYellow + name + clrGreen +  "." + clrEnd)
                                         if runtime.GOOS == "windows" {
                                             cmd := exec.Command("cmd", "/c", "robocopy", "../../" + viper.GetString("server.base") + viper.GetString("server.servers." + name + ".dir"), viper.GetString("server.servers." + name + ".dir"), "/MIR")
@@ -489,9 +513,8 @@ func filters(text string, type_ string) string {
                 return "              " + clrRed + line + clrEnd
             } else if logClrEnd {
                 return line + clrEnd
-            } else {
-                return line
             }
+            return line
         } else {
             return line
         }
@@ -570,14 +593,14 @@ func webconHandler() {
 }
 
 func webconRootHandler(w http.ResponseWriter, r *http.Request)  {
-    claims, ok := r.Context().Value(MyKey).(Claims)
+    claims, ok := r.Context().Value(myKey).(cookieClaims)
     if !ok {
         http.Redirect(w, r, "/login", 307)
     }
 
     if _, err := os.Stat(viper.GetString("webcon.dir") + "index.html"); os.IsNotExist(err) {
         fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ")" + clrDarkCyan + ": " + clrRed + "Error: missing file 'index.html' or invalid path." + clrEnd)
-        fmt.Fprintln(w, "An internal error has occured.")
+        fmt.Fprintln(w, "An internal error has occurred.")
     } else {
         var blocked bool
         var server bool = false
@@ -597,7 +620,7 @@ func webconRootHandler(w http.ResponseWriter, r *http.Request)  {
             }
         }
 
-        for s, _ := range viper.Get("server.servers").(map[string]interface{}) {
+        for s := range viper.Get("server.servers").(map[string]interface{}) {
             if s == strings.Join(r.URL.Query()["server"], " ") {
                server = true
             }
@@ -626,7 +649,7 @@ func webconAuthLogin(w http.ResponseWriter, r *http.Request) {
     if r.Method == "GET" {
         if _, err := os.Stat(viper.GetString("webcon.dir") + "login.html"); os.IsNotExist(err) {
             fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ")" + clrDarkCyan + ": " + clrRed + "Error: missing file 'login.html' or invalid path." + clrEnd)
-            fmt.Fprintln(w, "An internal error has occured.")
+            fmt.Fprintln(w, "An internal error has occurred.")
         } else {
             var blocked bool = false
             for _, a := range viper.Get("webcon.blacklist.IP").([]interface{}) {
@@ -652,7 +675,7 @@ func webconAuthLogin(w http.ResponseWriter, r *http.Request) {
             expireCookie := time.Now().Add(time.Hour * 1)
 
             // We'll manually assign the claims but in production you'd insert values from a database
-            claims := Claims {
+            claims := cookieClaims {
                 r.Form["username"][0],
                 jwt.StandardClaims {
                     ExpiresAt: expireToken,
@@ -675,7 +698,7 @@ func webconAuthLogin(w http.ResponseWriter, r *http.Request) {
         } else {
             if _, err := os.Stat(viper.GetString("webcon.dir") + "login.html"); os.IsNotExist(err) {
                 fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ")" + clrDarkCyan + ": " + clrRed + "Error: missing file 'login.html' or invalid path." + clrEnd)
-                fmt.Fprintln(w, "An internal error has occured.")
+                fmt.Fprintln(w, "An internal error has occurred.")
             } else {
                 if viper.GetBool("webcon.messages.login_fail") { fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ")" + clrDarkCyan + ": " + clrRed + "Authentication failed from: " + clrYellow + strings.Split(r.RemoteAddr, ":")[0] + clrRed + "\n                           reason: Invalid username/password." + clrEnd) }
                 t := template.Must(template.ParseFiles(viper.GetString("webcon.dir") + "login.html"))
@@ -698,7 +721,10 @@ func webconAuthValidate(page http.HandlerFunc) http.HandlerFunc {
         }
 
         // Return a Token using the cookie
-        token, err := jwt.ParseWithClaims(cookie.Value, &Claims{}, func(token *jwt.Token) (interface{}, error){
+        token, err := jwt.ParseWithClaims(cookie.Value, &cookieClaims{}, func(token *jwt.Token) (interface{}, error) {
+            if err != nil {
+                return nil, fmt.Errorf("Unexpected error occurred")
+            }
             // Make sure token's signature wasn't changed
             if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
                 return nil, fmt.Errorf("Unexpected siging method")
@@ -711,8 +737,8 @@ func webconAuthValidate(page http.HandlerFunc) http.HandlerFunc {
         }
 
         // Grab the tokens claims and pass it into the original request
-        if claims, ok := token.Claims.(*Claims); ok && token.Valid {
-            ctx := context.WithValue(req.Context(), MyKey, *claims)
+        if claims, ok := token.Claims.(*cookieClaims); ok && token.Valid {
+            ctx := context.WithValue(req.Context(), myKey, *claims)
             page(res, req.WithContext(ctx))
         } else {
             http.Redirect(res, req, "/login", 307)
@@ -743,14 +769,14 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
   	conn, err := websocket.Upgrade(w, r, w.Header(), 1024, 1024)
   	if err != nil { http.Error(w, "Could not open websocket connection", http.StatusBadRequest) }
 
-    token, err := jwt.ParseWithClaims(strings.Join(r.URL.Query()["token"], " "), &Claims{}, func(token *jwt.Token) (interface{}, error) {
+    token, err := jwt.ParseWithClaims(strings.Join(r.URL.Query()["token"], " "), &cookieClaims{}, func(token *jwt.Token) (interface{}, error) {
         // Make sure token's signature wasn't changed
         if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
             return nil, fmt.Errorf("Unexpected siging method")
         }
         return []byte("secret"), nil
     })
-    if claims, ok := token.Claims.(*Claims); ok && token.Valid {
+    if claims, ok := token.Claims.(*cookieClaims); ok && token.Valid {
         CID := len(wsConns)
         wsConns[CID] = wsUserdata{Conn: conn, IP: strings.Split(r.RemoteAddr, ":")[0], Port: strings.Split(r.RemoteAddr, ":")[1], Username: claims.Username, Server: strings.Join(r.URL.Query()["server"], " ")}
       	go wsConnectionHandler(conn, strings.Split(r.RemoteAddr, ":")[0], CID, strings.Join(r.URL.Query()["server"], " "))
@@ -767,14 +793,17 @@ func wsConnectionHandler(conn *websocket.Conn, IP string, CID int, server string
             if viper.GetBool("webcon.messages.ws_disconnect") { fmt.Fprintln(color.Output, time.Now().Format("15:04:05") + clrDarkCyan + " | INFO: " + clrWhite + "(" + clrDarkMagenta + "WEBCON" + clrWhite + ") " + clrMagenta + "WS" + clrDarkCyan + ": " + clrRed + "Connection terminated from: " + clrYellow + IP + clrDarkCyan + " [" + strconv.Itoa(len(wsConns)) + "]" + clrEnd) }
             break
         }
-        token, err := jwt.ParseWithClaims(exec.Token, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+        token, err := jwt.ParseWithClaims(exec.Token, &cookieClaims{}, func(token *jwt.Token) (interface{}, error) {
+            if err != nil {
+                return nil, fmt.Errorf("Unexpected error occurred")
+            }
             // Make sure token's signature wasn't changed
             if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
                 return nil, fmt.Errorf("Unexpected siging method")
             }
             return []byte("secret"), nil
         })
-        if claims, ok := token.Claims.(*Claims); ok && token.Valid {
+        if claims, ok := token.Claims.(*cookieClaims); ok && token.Valid {
             if exec.Command == "/ws-gh" {
                 for i := 0; i <= len(servers[server].Logs); i++ {
                     if servers[server].Logs[i].Type == "server" {

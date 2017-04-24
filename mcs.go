@@ -518,7 +518,7 @@ func filtersServer(line string, logTime bool, logClrEnd bool) string {
 	} else {
 		logTime = false
 	}
-  line, logTime, logClrEnd = filtersServerLogType(line, logTime, logClrEnd)
+	line, logTime, logClrEnd = filtersServerLogType(line, logTime, logClrEnd)
 	line = regexp.MustCompile(`\[Server\]`).ReplaceAllString(line, clrMagenta+"[Server]"+clrEnd)
 
 	if logWarnSpacer && !logTime {
@@ -569,7 +569,7 @@ func filtersServerLogType(line string, logTime bool, logClrEnd bool) (string, bo
 }
 
 func filtersWebcon(line string) string {
-  line = filtersWebconLogType(line)
+	line = filtersWebconLogType(line)
 
 	if regexp.MustCompile(`\[(\d{2}):(\d{2}):(\d{2})`).MatchString(line) {
 		line = regexp.MustCompile(`\[(\d{2}):(\d{2}):(\d{2})`).ReplaceAllString(line, "")

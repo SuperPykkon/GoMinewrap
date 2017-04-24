@@ -278,7 +278,6 @@ func serverCommandHandler(command string) bool {
 				serverCommandFilters(command)
 			case "server":
 				serverCommandServer(command)
-
 			case "clear":
 				serverCommandClear()
 			default:
@@ -519,7 +518,20 @@ func filtersServer(line string, logTime bool, logClrEnd bool) string {
 	} else {
 		logTime = false
 	}
+  line, logTime, logClrEnd = filtersServerLogType(line, logTime, logClrEnd)
+	line = regexp.MustCompile(`\[Server\]`).ReplaceAllString(line, clrMagenta+"[Server]"+clrEnd)
 
+	if logWarnSpacer && !logTime {
+		return "              " + clrYellow + line + clrEnd
+	} else if logErrorSpacer && !logTime {
+		return "              " + clrRed + line + clrEnd
+	} else if logClrEnd {
+		return line + clrEnd
+	}
+	return line
+}
+
+func filtersServerLogType(line string, logTime bool, logClrEnd bool) (string, bool, bool) {
 	if regexp.MustCompile(`INFO\]:`).MatchString(line) {
 		if regexp.MustCompile(`\[/[0-9]+(?:\.[0-9]+){3}:[0-9]+\] logged in with entity id \d`).MatchString(line) {
 			line = regexp.MustCompile(`INFO\]:`).ReplaceAllString(line, clrDarkGreen+"+"+clrDarkCyan+" INFO:"+clrGreen)
@@ -553,20 +565,24 @@ func filtersServer(line string, logTime bool, logClrEnd bool) string {
 		logErrorSpacer = true
 		logClrEnd = true
 	}
-
-	line = regexp.MustCompile(`\[Server\]`).ReplaceAllString(line, clrMagenta+"[Server]"+clrEnd)
-
-	if logWarnSpacer && !logTime {
-		return "              " + clrYellow + line + clrEnd
-	} else if logErrorSpacer && !logTime {
-		return "              " + clrRed + line + clrEnd
-	} else if logClrEnd {
-		return line + clrEnd
-	}
-	return line
+	return line, logTime, logClrEnd
 }
 
 func filtersWebcon(line string) string {
+  line = filtersWebconLogType(line)
+
+	if regexp.MustCompile(`\[(\d{2}):(\d{2}):(\d{2})`).MatchString(line) {
+		line = regexp.MustCompile(`\[(\d{2}):(\d{2}):(\d{2})`).ReplaceAllString(line, "")
+		line = "<div class='row'><span class='time'>" + time.Now().Format("15:04:05") + "</span>" + line
+	} else {
+		line = "<div class='row'><span class='time'></span>" + line
+	}
+
+	line = regexp.MustCompile(`\[Server\]`).ReplaceAllString(line, "<div style='color: #FF55FF; padding: 0px 5px 0px 0px;'>[Server]</div>")
+	return line + "</div>"
+}
+
+func filtersWebconLogType(line string) string {
 	if regexp.MustCompile(`INFO\]:`).MatchString(line) {
 		line = regexp.MustCompile(`INFO\]:`).ReplaceAllString(line, "")
 		if regexp.MustCompile(`\[/[0-9]+(?:\.[0-9]+){3}:[0-9]+\] logged in with entity id \d`).MatchString(line) {
@@ -603,16 +619,7 @@ func filtersWebcon(line string) string {
 			line = "<div class='log undefined'>" + line + "</div>"
 		}
 	}
-
-	if regexp.MustCompile(`\[(\d{2}):(\d{2}):(\d{2})`).MatchString(line) {
-		line = regexp.MustCompile(`\[(\d{2}):(\d{2}):(\d{2})`).ReplaceAllString(line, "")
-		line = "<div class='row'><span class='time'>" + time.Now().Format("15:04:05") + "</span>" + line
-	} else {
-		line = "<div class='row'><span class='time'></span>" + line
-	}
-
-	line = regexp.MustCompile(`\[Server\]`).ReplaceAllString(line, "<div style='color: #FF55FF; padding: 0px 5px 0px 0px;'>[Server]</div>")
-	return line + "</div>"
+	return line
 }
 
 /*

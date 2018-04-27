@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"context"
 	"flag"
 	"fmt"
 	"html/template"
@@ -18,6 +17,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"golang.org/x/net/context"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/fatih/color"
 	"github.com/gorilla/websocket"
